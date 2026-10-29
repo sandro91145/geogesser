@@ -483,3 +483,12 @@ button { font: inherit; }
 .party-podium li { font-size: 1.05rem; padding: .5rem; }
 .party-place { font-size: 1.3rem; text-align: center; }
 .party-winner { font-size: clamp(2.4rem, 8vw, 3.6rem); margin-bottom: .6rem; }
+
+/* ---------- rounds picker ---------- */
+.rounds-picker { align-items: center; }
+.rounds-other { display: inline-flex; align-items: center; gap: .5rem; margin-left: .25rem; color: var(--ink-soft); }
+.rounds-other input {
+  width: 4.5rem; font: inherit; font-weight: 600; text-align: center; padding: .45rem .5rem; border-radius: 999px;
+  border: 1.5px solid rgba(60, 78, 102, .35); background: var(--paper); color: var(--ink);
+}
+.rounds-other input:focus-visible { outline: 3px solid var(--guess); outline-offset: 1px; }

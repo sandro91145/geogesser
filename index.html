@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/core@5.15.1/index.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/markers-plugin@5.15.1/index.css">
-  <link rel="stylesheet" href="style.css?v=11">
+  <link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
 
@@ -25,7 +25,7 @@
   <main id="start" class="screen start">
     <div class="start-inner">
       <h1 class="wordmark">Onde?</h1>
-      <p class="lede">You're dropped somewhere on Earth. Look around, find the clues, and pin where you think you are. Five rounds, up to 5,000 points each.</p>
+      <p class="lede">You're dropped somewhere on Earth. Look around, find the clues, and pin where you think you are. Up to 5,000 points per round.</p>
 
       <section class="daily" id="daily" aria-labelledby="dailyTitle">
         <div class="daily-text">
@@ -51,7 +51,7 @@
       <section class="daily party-card" id="partyCard" hidden aria-labelledby="partyCardTitle">
         <div class="daily-text">
           <h2 id="partyCardTitle">Party game</h2>
-          <p>Up to 5 players, live. Everyone gets the same 5 places, and the highest total score wins.</p>
+          <p>Up to 5 players, live. Everyone gets the same places, you choose how many rounds, and the highest total score wins.</p>
         </div>
         <div class="daily-actions">
           <button type="button" class="btn btn-primary" id="partyCreate">Create a game</button>
@@ -72,8 +72,18 @@
         <fieldset>
           <legend>Game</legend>
           <div class="chips">
-            <label class="chip"><input type="radio" name="game" value="classic" checked><span>5 rounds, closest wins</span></label>
+            <label class="chip"><input type="radio" name="game" value="classic" checked><span>Classic: closest wins</span></label>
             <label class="chip"><input type="radio" name="game" value="streak"><span>Country streak</span></label>
+          </div>
+        </fieldset>
+<fieldset id="roundsField">
+          <legend><label for="roundsInput">Rounds</label></legend>
+          <div class="chips rounds-picker" id="roundsPicker">
+            <label class="chip"><input type="radio" name="roundsPick" value="3"><span>3</span></label>
+            <label class="chip"><input type="radio" name="roundsPick" value="5" checked><span>5</span></label>
+            <label class="chip"><input type="radio" name="roundsPick" value="10"><span>10</span></label>
+            <label class="chip"><input type="radio" name="roundsPick" value="20"><span>20</span></label>
+            <span class="rounds-other">or <input type="number" id="roundsInput" name="rounds" min="1" max="50" value="5" inputmode="numeric" aria-label="Number of rounds, 1 to 50"></span>
           </div>
         </fieldset>
         <fieldset>
@@ -180,6 +190,16 @@
           <div class="lb-row"><input id="partyName" maxlength="20" autocomplete="nickname" placeholder="Your name"></div>
         </fieldset>
         <div id="partyHost" hidden>
+          <fieldset id="partyRoundsField">
+          <legend><label for="partyRoundsInput">Rounds</label></legend>
+          <div class="chips rounds-picker" id="partyRoundsPicker">
+            <label class="chip"><input type="radio" name="partyRoundsPick" value="3"><span>3</span></label>
+            <label class="chip"><input type="radio" name="partyRoundsPick" value="5" checked><span>5</span></label>
+            <label class="chip"><input type="radio" name="partyRoundsPick" value="10"><span>10</span></label>
+            <label class="chip"><input type="radio" name="partyRoundsPick" value="20"><span>20</span></label>
+            <span class="rounds-other">or <input type="number" id="partyRoundsInput" name="partyRounds" min="1" max="50" value="5" inputmode="numeric" aria-label="Number of rounds, 1 to 50"></span>
+          </div>
+        </fieldset>
           <fieldset>
             <legend>Where to play</legend>
             <div class="chips" id="partyRegionChips"></div>
@@ -258,6 +278,6 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-  <script type="module" src="js/app.js?v=11"></script>
+  <script type="module" src="js/app.js?v=12"></script>
 </body>
 </html>

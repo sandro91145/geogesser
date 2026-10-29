@@ -2,7 +2,7 @@
 
 A free, GeoGuessr-style geography game that runs entirely in the browser.
 
-You're dropped onto a random street somewhere on Earth. Look around in 360°, walk down the road, find clues, then pin where you think you are. Five rounds, up to 5,000 points each.
+You're dropped onto a random street somewhere on Earth. Look around in 360°, walk down the road, find clues, then pin where you think you are. Up to 5,000 points per round; you choose how many rounds (1–50).
 
 **Play:** https://sandro91145.github.io/geogesser/
 
@@ -12,8 +12,8 @@ You're dropped onto a random street somewhere on Earth. Look around in 360°, wa
 - **Movement options** like GeoGuessr: Move, No moving, or No moving, panning or zooming
 - **Daily challenge**: the same five places for everyone each day, with a leaderboard and a shareable 🟩🟨🟧 result
 - **Live duels**: send a friend a link and play in real time. Same street for both; once one player guesses, the other has 15 seconds; the lower score loses the difference in health (6,000 each, damage multiplier grows from round 5)
-- **Party game**: up to 5 players live. Everyone gets the same 5 street views; once someone guesses, the others have 20 seconds; highest total wins
-- **Challenge a friend**: copies a link that replays your exact five rounds and shows your score to beat
+- **Party game**: up to 5 players live, the host picks the number of rounds. Everyone gets the same street views; once someone guesses, the others have 20 seconds; highest total wins
+- **Challenge a friend**: copies a link that replays your exact rounds and shows your score to beat
 - **Country streak**: click the country you think you're in; how many in a row can you get?
 - **Photos mode**: real photos of places from Wikimedia Commons
 - **Installable**: add it to your phone's home screen or install it on your PC as an app
@@ -24,7 +24,7 @@ You're dropped onto a random street somewhere on Earth. Look around in 360°, wa
 
 - **Street view.** Mapillary: each round reads Mapillary's coverage tile (about 20 km) around a random point near a seed city in `js/seeds.js`, picks a 360° sequence and starts in the middle of it. Panoramax: `data/coverage.json` lists ~1,800 spots with 360° coverage, taken from Panoramax's coverage grid; each round searches one of them. A quarter of rounds use Panoramax, and it's the backup if Mapillary fails. Panoramas are shown with [Photo Sphere Viewer](https://photo-sphere-viewer.js.org).
 - **Daily challenge** uses a random generator seeded with the date over the Panoramax coverage, so everyone gets the same places without a server.
-- **Challenge links** pack the five round IDs and settings into the URL (`#c=…`).
+- **Challenge links** pack the round IDs and settings into the URL (`#c=…`).
 - **Place names** on the result screen, and the country checks in Country streak, come from OpenStreetMap's Nominatim.
 - **Photos mode** asks the [Wikidata Query Service](https://query.wikidata.org) for photographed places near a seed point, with credits from the Commons API, and falls back to ~110 built-in photos in `data/fallback.json`.
 - **Map** is [Leaflet](https://leafletjs.com) with OpenStreetMap tiles.

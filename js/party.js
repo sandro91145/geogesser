@@ -1,5 +1,5 @@
-// Party game: up to 5 players, same street views in real time, 5 rounds,
-// highest total score wins.
+// Party game: up to 5 players, same street views in real time, the host picks
+// how many rounds (1–50), highest total score wins.
 //
 // Transport: a Supabase Realtime broadcast channel per game ("onde-party-CODE").
 // The host is in charge: it keeps the player list, picks every location and
@@ -8,12 +8,13 @@
 //
 // Messages: hello · roster · reject · start · round · ready · go · guess · result · ping · bye
 
-import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=11';
+import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=12';
 
 const MAX_PLAYERS = 5;
-const ROUNDS = 5;
 const AFTER_FIRST_GUESS = 20;   // seconds everyone else gets once someone has guessed
 const LOST_AFTER = 25;          // seconds of silence before a player counts as gone
+const MAX_ROUNDS = 50;
+const clampRounds = (v) => Math.max(1, Math.min(MAX_ROUNDS, Math.round(Number(v)) || 5));
 const COLORS = ['#F2B705', '#4C8EDA', '#E0457B', '#2EAD6B', '#9B5DE5'];
 const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
@@ -230,15 +231,15 @@ export function initParty(app) {
   function startAsHost() {
     if (!isHost() || P.players.length < 2) return;
     const form = $('partyForm');
-    const settings = { region: form.partyRegion.value, move: form.partyMove.value };
+    const settings = { region: form.partyRegion.value, move: form.partyMove.value, rounds: clampRounds(form.partyRounds.value) };
     P.started = true;
     broadcastRoster();
     send({ t: 'start', ...settings });
     begin(settings);
   }
 
-  function begin({ region, move }) {
-    Object.assign(P, { region: REGIONS[region] ? region : 'world', move, n: 0, totals: {}, history: [], phase: 'loading', ready: {}, guesses: {}, started: true });
+  function begin({ region, move, rounds }) {
+    Object.assign(P, { region: REGIONS[region] ? region : 'world', move, rounds: clampRounds(rounds), n: 0, totals: {}, history: [], phase: 'loading', ready: {}, guesses: {}, started: true });
     P.used = new Set();
     Object.assign(state, { kind: 'party', game: 'classic', mode: 'street', regionKey: P.region, move: P.move, timerSecs: 0, round: 0, total: 0, results: [] });
     state.usedTitles.clear();
@@ -264,7 +265,7 @@ export function initParty(app) {
       P.used.add(String(loc.id));
       send({ t: 'round', n, spec: app.specOf(loc) });
       loadRound(n, null, loc);
-      if (n < ROUNDS) P.prefetch = app.findPano(REGIONS[P.region], P.used).catch(() => null);
+      if (n < P.rounds) P.prefetch = app.findPano(REGIONS[P.region], P.used).catch(() => null);
     } catch {
       app.showLoading("Couldn't find a street view. Trying again…");
       setTimeout(() => P && hostNextRound(), 1500);
@@ -284,7 +285,7 @@ export function initParty(app) {
     $('guessPanel').classList.remove('pinned', 'open');
     app.resetGuessMap();
     updateHud();
-    app.showLoading(`Round ${n} of ${ROUNDS}`);
+    app.showLoading(`Round ${n} of ${P.rounds}`);
     try {
       loc ||= await app.locFromSpec(spec);
       if (!P || P.n !== n) return;
@@ -418,11 +419,11 @@ export function initParty(app) {
       L.polyline([near, tl], { color: colorOf(r.id), weight: 3, dashArray: '2 8', lineCap: 'round' }).addTo(layer);
       bounds.push(near);
     }
-    const last = P.n >= ROUNDS;
+    const last = P.n >= P.rounds;
     const best = rows[0];
     const headline = best && best.pts > 0 ? `${best.id === P.me.id ? 'You were' : `${e(nameOf(best.id))} was`} closest` : 'Nobody got close';
     $('resultCard').innerHTML = `
-      <p class="duel-round">Round ${P.n} of ${ROUNDS}</p>
+      <p class="duel-round">Round ${P.n} of ${P.rounds}</p>
       <p class="streak-verdict">${headline}</p>
       <p class="r-where" id="partyWhere"></p>
       <ol class="sum-list party-list">${rows.map((r) => `<li class="${r.id === P.me.id ? 'me' : ''}">
@@ -483,7 +484,7 @@ export function initParty(app) {
       </div>`;
     if (bounds.length) app.resultMap().fitBounds(L.latLngBounds(bounds), { padding: [50, 50], paddingBottomRight: [50, app.cardPadding()], maxZoom: 6, animate: false });
     $('partyLeave').addEventListener('click', () => app.showStart());
-    $('partyAgain')?.addEventListener('click', () => { send({ t: 'start', region: P.region, move: P.move }); begin({ region: P.region, move: P.move }); });
+    $('partyAgain')?.addEventListener('click', () => { const s = { region: P.region, move: P.move, rounds: P.rounds }; send({ t: 'start', ...s }); begin(s); });
   }
 
   /* ---------- HUD ---------- */
@@ -497,7 +498,7 @@ export function initParty(app) {
     const rank = order.findIndex((p) => p.id === P.me.id) + 1;
     const guessed = Object.keys(P.guesses[P.n] || {}).length;
     $('hudDuel').innerHTML = `
-      <div class="party-hud"><span><strong>Round ${Math.max(1, P.n)}/${ROUNDS}</strong></span>
+      <div class="party-hud"><span><strong>Round ${Math.max(1, P.n)}/${P.rounds}</strong></span>
       <span>${app.fmt(P.totals[P.me.id] || 0)} pts · ${rank ? `#${rank} of ${P.players.length}` : ''}</span></div>
       ${P.phase === 'playing' ? `<span class="hud-duel-round">${guessed} of ${P.players.length} guessed</span>` : ''}`;
   }

@@ -1,11 +1,13 @@
-import { REGIONS } from './seeds.js?v=11';
-import { StreetViewer, findPano, panoFromSpec, panoSpec, panoramaxCandidates, preloadPano, hasMapillary } from './street.js?v=11';
-import { hasLeaderboard, topScores, rankOf, submitScore, savedName, submittedToday } from './leaderboard.js?v=11';
-import { initDuel, hasDuels } from './duel.js?v=11';
-import { initParty, hasParty } from './party.js?v=11';
+import { REGIONS } from './seeds.js?v=12';
+import { StreetViewer, findPano, panoFromSpec, panoSpec, panoramaxCandidates, preloadPano, hasMapillary } from './street.js?v=12';
+import { hasLeaderboard, topScores, rankOf, submitScore, savedName, submittedToday } from './leaderboard.js?v=12';
+import { initDuel, hasDuels } from './duel.js?v=12';
+import { initParty, hasParty } from './party.js?v=12';
 let duel = null, party = null;
 
-const ROUNDS = 5;
+const DAILY_ROUNDS = 5;   // the daily challenge (and its leaderboard) is always 5 rounds
+const MAX_ROUNDS = 50;
+const clampRounds = (v) => Math.max(1, Math.min(MAX_ROUNDS, Math.round(Number(v)) || 5));
 const MAX_POINTS = 5000;
 
 const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
@@ -22,6 +24,7 @@ const state = {
   guessCountry: null,    // Promise<{cc,name,flag}|null|undefined> for the current pin (streak)
   move: 'move',          // move | nomove | nmpz
   timerSecs: 0,
+  rounds: 5,
   kind: 'custom',        // custom | daily | challenge
   dailyDate: null,
   challenge: null,       // decoded challenge payload
@@ -43,7 +46,7 @@ const store = {
   get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } },
 };
-const bestKey = () => `onde.best.${state.game === 'streak' ? 'streak.' : ''}${state.mode}.${state.regionKey}.${state.timerSecs}${state.mode === 'street' ? '.' + state.move : ''}`;
+const bestKey = () => `onde.best.${state.game === 'streak' ? 'streak.' : ''}${state.mode}.${state.regionKey}.${state.timerSecs}${state.mode === 'street' ? '.' + state.move : ''}${state.game === 'classic' && state.rounds !== 5 ? '.r' + state.rounds : ''}`;
 
 /* ---------------- helpers ---------------- */
 const fmt = (n) => Math.round(n).toLocaleString('en-US');
@@ -406,11 +409,13 @@ function readForm() {
   state.regionKey = form.region.value;
   state.move = form.move.value;
   state.timerSecs = Number(form.timer.value);
+  state.rounds = clampRounds(form.rounds.value);
 }
 
 function renderSetup() {
   readForm();
   $('moveField').hidden = state.mode !== 'street';
+  $('roundsField').hidden = state.game === 'streak';
   const best = store.get(bestKey());
   const where = REGIONS[state.regionKey].label;
   $('bestLine').innerHTML = state.game === 'streak'
@@ -497,7 +502,7 @@ function renderChallenge() {
   $('challenge').hidden = !c;
   if (!c) return;
   const mode = c.m === 'street' ? `street view${c.mv === 'move' ? '' : c.mv === 'nomove' ? ', no moving' : ', no moving, panning or zooming'}` : 'photos';
-  $('challengeLine').textContent = `${REGIONS[c.r]?.label || 'World'}, ${mode}${c.t ? `, ${c.t}s per round` : ''}. ${c.p ? `Their score: ${fmt(c.p)}.` : ''}`;
+  $('challengeLine').textContent = `${REGIONS[c.r]?.label || 'World'}, ${mode}, ${c.s.length} ${c.s.length === 1 ? 'round' : 'rounds'}${c.t ? `, ${c.t}s per round` : ''}. ${c.p ? `Their score: ${fmt(c.p)}.` : ''}`;
 }
 
 function showStart() {
@@ -548,6 +553,7 @@ function startDaily() {
   state.regionKey = 'world';
   state.move = 'move';
   state.timerSecs = 0;
+  state.rounds = DAILY_ROUNDS;
   beginGame();
 }
 
@@ -559,6 +565,7 @@ function startChallenge() {
   state.regionKey = REGIONS[c.r] ? c.r : 'world';
   state.move = c.mv || 'move';
   state.timerSecs = c.t || 0;
+  state.rounds = c.s.length;
   beginGame();
 }
 
@@ -566,7 +573,7 @@ async function nextRound() {
   state.round += 1;
   state.phase = 'loading';
   state.current = null;
-  $('hudRound').textContent = state.game === 'streak' ? String(state.streak) : `${state.round}/${ROUNDS}`;
+  $('hudRound').textContent = state.game === 'streak' ? String(state.streak) : `${state.round}/${state.rounds}`;
   $('result').hidden = true;
   $('guessPanel').classList.remove('pinned', 'open');
   $('stageImg').classList.remove('zoomed');
@@ -586,7 +593,7 @@ async function nextRound() {
     state.phase = 'guessing';
     startTimer();
     if (state.game === 'streak') placeName(loc);   // know the country before the guess
-    if (state.game === 'streak' || roundNo < ROUNDS) state.prefetch = findLocation(roundNo + 1).catch(() => null);
+    if (state.game === 'streak' || roundNo < state.rounds) state.prefetch = findLocation(roundNo + 1).catch(() => null);
   } catch (err) {
     if (gameId !== state.gameId) return;
     console.error(err);
@@ -678,7 +685,7 @@ function showRoundResult({ loc, guess, km, points, timedOut }) {
   resultLayer.clearLayers();
 
   const truth = L.latLng(loc.lat, loc.lng);
-  const last = state.round >= ROUNDS;
+  const last = state.round >= state.rounds;
   const pct = Math.round((points / MAX_POINTS) * 100);
   const title = loc.kind === 'photo' && !looksLikeCameraName(loc.name) ? `<p class="r-place">${escapeHTML(loc.name)}</p>` : '';
 
@@ -735,7 +742,7 @@ function countUp(el, km) {
 
 const blocks = (pts) => pts.map((p) => (p >= 4000 ? '🟩' : p >= 2000 ? '🟨' : p > 0 ? '🟧' : '⬛')).join('');
 const baseUrl = () => location.href.split('#')[0].split('?')[0];
-const dailyShareText = (d) => `Onde? Daily ${prettyDate(d.date)}: ${fmt(d.total)}/${fmt(MAX_POINTS * ROUNDS)}\n${blocks(d.points)}\n${baseUrl()}`;
+const dailyShareText = (d) => `Onde? Daily ${prettyDate(d.date)}: ${fmt(d.total)}/${fmt(MAX_POINTS * DAILY_ROUNDS)}\n${blocks(d.points)}\n${baseUrl()}`;
 
 function challengeLink() {
   const payload = { v: 1, m: state.mode, r: state.regionKey, mv: state.move, t: state.timerSecs, p: state.total, s: state.results.map((r) => specOf(r.loc)) };
@@ -762,7 +769,7 @@ function showSummary() {
     const isBest = state.total > prevBest;
     if (isBest) store.set(key, state.total);
     const what = state.mode === 'street' ? 'street view' : 'photos';
-    sub = `${region.label}, ${what}${state.timerSecs ? `, ${state.timerSecs}s per round` : ''}. ${isBest ? (prevBest ? 'New personal best.' : 'Your first score with these settings.') : `Your best is ${fmt(prevBest)}.`}`;
+    sub = `${region.label}, ${what}, ${state.rounds} ${state.rounds === 1 ? 'round' : 'rounds'}${state.timerSecs ? `, ${state.timerSecs}s per round` : ''}. ${isBest ? (prevBest ? 'New personal best.' : 'Your first score with these settings.') : `Your best is ${fmt(prevBest)}.`}`;
   }
 
   resultLayer.clearLayers();
@@ -788,7 +795,7 @@ function showSummary() {
       <span class="s-pts">${fmt(r.points)}<span class="s-km">${r.km == null ? 'no guess' : fmtKm(r.km)}</span></span></li>`).join('');
 
   $('resultCard').innerHTML = `
-    <p class="sum-total">${fmt(state.total)} <span>/ ${fmt(MAX_POINTS * ROUNDS)}</span></p>
+    <p class="sum-total">${fmt(state.total)} <span>/ ${fmt(MAX_POINTS * state.rounds)}</span></p>
     <p class="sum-sub">${escapeHTML(sub)}</p>
     <ol class="sum-list">${rows}</ol>
     ${state.kind === 'daily' && hasLeaderboard() ? '<section class="lb" aria-label="Today\'s leaderboard"><div id="sumSubmit"></div><div id="sumBoard"></div></section>' : ''}
@@ -812,7 +819,7 @@ function showSummary() {
   $('copyBtn').addEventListener('click', (e) => {
     const text = state.kind === 'daily'
       ? dailyShareText({ date: state.dailyDate, total: state.total, points })
-      : `Onde? ${region.label}: ${fmt(state.total)}/${fmt(MAX_POINTS * ROUNDS)}\n${blocks(points)}\n${baseUrl()}`;
+      : `Onde? ${region.label}: ${fmt(state.total)}/${fmt(MAX_POINTS * state.rounds)}\n${blocks(points)}\n${baseUrl()}`;
     copyText(text, e.currentTarget, 'Copy result');
   });
   ($('againBtn') || $('linkBtn')).focus({ preventScroll: true });
@@ -946,10 +953,25 @@ function readChallengeFromUrl() {
   if (!m) return null;
   try {
     const c = b64url.decode(m[1]);
-    if (c?.v === 1 && Array.isArray(c.s) && c.s.length === ROUNDS && ['street', 'photo'].includes(c.m)) return c;
+    if (c?.v === 1 && Array.isArray(c.s) && c.s.length >= 1 && c.s.length <= MAX_ROUNDS && ['street', 'photo'].includes(c.m)) return c;
   } catch { /* bad link */ }
   return null;
 }
+
+// Rounds picker: quick buttons + a number box (1–50). The number box is what counts.
+function setupRoundsPicker(boxId, inputId) {
+  const box = $(boxId), input = $(inputId);
+  const sync = () => box.querySelectorAll('input[type=radio]').forEach((r) => { r.checked = Number(r.value) === clampRounds(input.value); });
+  box.addEventListener('change', (e) => {
+    if (e.target.type === 'radio') input.value = e.target.value;
+    else if (e.target === input) input.value = clampRounds(input.value);
+    sync();
+  });
+  input.addEventListener('input', sync);
+  sync();
+}
+setupRoundsPicker('roundsPicker', 'roundsInput');
+setupRoundsPicker('partyRoundsPicker', 'partyRoundsInput');
 
 renderRegions();
 if (hasMapillary()) $('mlyCredit').hidden = false;

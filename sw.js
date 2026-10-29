@@ -2,9 +2,9 @@
 // Same-origin files: network first (so updates arrive at once), cache as backup.
 // Libraries and fonts from CDNs: served from cache, refreshed in the background.
 // Imagery, maps and APIs are never cached here.
-const CACHE = 'onde-v11';
-const SHELL = ['./', 'index.html', 'style.css?v=11', 'js/app.js?v=11', 'js/street.js?v=11', 'js/seeds.js?v=11', 'js/config.js?v=11', 'js/leaderboard.js?v=11', 'js/duel.js?v=11', 'js/party.js?v=11',
-  'data/coverage.json?v=11', 'data/fallback.json', 'manifest.webmanifest', 'icons/icon-192.png'];
+const CACHE = 'onde-v12';
+const SHELL = ['./', 'index.html', 'style.css?v=12', 'js/app.js?v=12', 'js/street.js?v=12', 'js/seeds.js?v=12', 'js/config.js?v=12', 'js/leaderboard.js?v=12', 'js/duel.js?v=12', 'js/party.js?v=12',
+  'data/coverage.json?v=12', 'data/fallback.json', 'manifest.webmanifest', 'icons/icon-192.png'];
 const CDN = /^https:\/\/(cdn\.jsdelivr\.net|cdnjs\.cloudflare\.com|fonts\.googleapis\.com|fonts\.gstatic\.com)\//;
 
 self.addEventListener('install', (e) => {
