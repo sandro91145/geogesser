@@ -299,3 +299,78 @@ button { font: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0s !important; animation: none !important; }
 }
+
+/* ---------- start: daily + challenge ---------- */
+.daily, .challenge {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem 1.5rem;
+  background: var(--ink); color: var(--chart);
+  border-radius: 18px;
+  padding: 1.25rem 1.4rem;
+  margin: 0 0 2.5rem;
+}
+.daily h2, .challenge h2 { font-family: var(--display); font-weight: 800; font-size: 1.7rem; line-height: 1; margin: 0 0 .35rem; letter-spacing: .01em; }
+.daily p, .challenge p { margin: 0; opacity: .85; max-width: 30em; }
+.daily strong { font-family: var(--display); font-size: 1.3rem; }
+.daily-actions, .challenge-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.daily .btn-outline, .challenge .btn-outline { color: var(--chart); }
+.challenge { background: var(--guess); color: #16243A; flex-direction: column; align-items: flex-start; }
+.challenge .btn-primary { background: #16243A; color: #fff; }
+.challenge .btn-outline { color: #16243A; }
+.setup-title { font-family: var(--display); font-weight: 800; font-size: 1.7rem; line-height: 1; margin: 0 0 1.25rem; letter-spacing: .01em; }
+
+/* ---------- street view ---------- */
+.pano { position: absolute; inset: 0; }
+.pano .psv-container { background: #0E1828; }
+.pano .psv-loader-container { color: var(--guess); }
+.stage-img[hidden], .stage-blur[hidden] { display: none !important; }
+
+.hud-left { display: flex; align-items: center; gap: .6rem; }
+.compass {
+  width: 48px; height: 48px; border-radius: 50%;
+  background: var(--hud-bg); border: 2px solid rgba(255,255,255,.25);
+  padding: 0; cursor: pointer; position: relative;
+  backdrop-filter: blur(8px);
+}
+.compass-rose { position: absolute; inset: 0; display: block; transition: transform .08s linear; }
+.compass-rose::before {
+  content: ''; position: absolute; left: 50%; top: 5px; transform: translateX(-50%);
+  border: 7px solid transparent; border-bottom: 13px solid var(--truth); border-top: 0;
+}
+.compass-rose::after {
+  content: ''; position: absolute; left: 50%; bottom: 5px; transform: translateX(-50%);
+  border: 7px solid transparent; border-top: 13px solid #fff; border-bottom: 0; opacity: .85;
+}
+.compass-n { display: none; }
+
+.pano-arrow {
+  display: block; width: 64px; height: 64px; border-radius: 50%;
+  background: rgba(255,255,255,.88);
+  box-shadow: 0 4px 14px rgba(0,0,0,.35);
+  position: relative; cursor: pointer;
+  transform: perspective(240px) rotateX(48deg);
+  transition: transform .12s var(--ease), background-color .12s;
+}
+.pano-arrow::after {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 20px; height: 20px;
+  border-left: 6px solid #16243A; border-top: 6px solid #16243A;
+  transform: translate(-50%, -30%) rotate(45deg);
+}
+.psv-marker:hover .pano-arrow { background: var(--guess); transform: perspective(240px) rotateX(48deg) scale(1.08); }
+
+.stage-tools { position: absolute; left: 1rem; bottom: 3rem; z-index: 6; display: flex; gap: .5rem; }
+.stage-tools .btn { background: var(--hud-bg); backdrop-filter: blur(8px); padding: .55rem 1rem; font-size: .9rem; }
+.stage-credit { z-index: 6; }
+.stage-hint { z-index: 6; }
+.loading-actions { display: flex; flex-wrap: wrap; gap: .5rem; justify-content: center; }
+
+/* ---------- result extras ---------- */
+.r-where { margin: 0 0 .25rem; font-weight: 700; font-size: 1.05rem; }
+.r-where:empty { display: none; }
+
+@media (max-width: 720px) {
+  .compass { width: 40px; height: 40px; }
+  .stage-tools { bottom: 5rem; }
+  .stage-credit { bottom: 8.4rem; }
+  .daily h2, .challenge h2, .setup-title { font-size: 1.45rem; }
+}

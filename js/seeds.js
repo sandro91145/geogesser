@@ -87,12 +87,23 @@ const portugal = [
   [38.65,-27.22],[38.53,-28.63],[38.68,-28.20],[39.45,-31.13],
 ];
 
+// Areas used to match street view coverage spots to a region: [south, north, west, east].
+const BOX = {
+  europe:   [[34.5, 72, -25, 45]],
+  americas: [[-56, 72, -170, -30]],
+  asia:     [[-11, 60, 45, 150]],
+  africa:   [[-35, 37.5, -26, 32], [-35, 12, 32, 60]],
+  oceania:  [[-50, 0, 110, 180], [-30, 25, -180, -130]],
+  portugal: [[36.9, 42.2, -9.6, -6.1], [32.3, 33.2, -17.4, -16.2], [36.8, 39.8, -31.5, -24.9]],
+};
+
 export const REGIONS = {
-  world:    { label: 'World',    scale: 1492, view: [[-50, -150], [70, 170]], jitter: 25, radius: 20, seeds: [...europe, ...asia, ...africa, ...americas, ...oceania] },
-  europe:   { label: 'Europe',   scale: 650, view: [[35, -24], [70, 42]], jitter: 25, radius: 20, seeds: europe },
-  americas: { label: 'Americas', scale: 1400, view: [[-55, -150], [65, -35]], jitter: 25, radius: 20, seeds: americas },
-  asia:     { label: 'Asia',     scale: 1000, view: [[-9, 26], [60, 145]], jitter: 25, radius: 20, seeds: asia },
-  africa:   { label: 'Africa',   scale: 800,  view: [[-35, -25], [37, 56]], jitter: 25, radius: 20, seeds: africa },
-  oceania:  { label: 'Oceania',  scale: 700,  view: [[-47, 112], [14, 205]], jitter: 25, radius: 20, seeds: oceania },
-  portugal: { label: 'Portugal', scale: 150, view: [[32.4, -29], [42.2, -6.2]], jitter: 8, radius: 12, seeds: portugal },
+  world:    { label: 'World',    scale: 1492, view: [[-50, -150], [70, 170]], jitter: 25, radius: 20, seeds: [...europe, ...asia, ...africa, ...americas, ...oceania],
+              boxes: null, continents: [BOX.europe, BOX.americas, BOX.asia, BOX.africa, BOX.oceania] },
+  europe:   { label: 'Europe',   scale: 650,  view: [[35, -24], [70, 42]],    jitter: 25, radius: 20, seeds: europe,   boxes: BOX.europe },
+  americas: { label: 'Americas', scale: 1400, view: [[-55, -150], [65, -35]], jitter: 25, radius: 20, seeds: americas, boxes: BOX.americas },
+  asia:     { label: 'Asia',     scale: 1000, view: [[-9, 26], [60, 145]],    jitter: 25, radius: 20, seeds: asia,     boxes: BOX.asia },
+  africa:   { label: 'Africa',   scale: 800,  view: [[-35, -25], [37, 56]],   jitter: 25, radius: 20, seeds: africa,   boxes: BOX.africa },
+  oceania:  { label: 'Oceania',  scale: 700,  view: [[-47, 112], [14, 205]],  jitter: 25, radius: 20, seeds: oceania,  boxes: BOX.oceania },
+  portugal: { label: 'Portugal', scale: 150,  view: [[32.4, -29], [42.2, -6.2]], jitter: 8, radius: 12, seeds: portugal, boxes: BOX.portugal },
 };

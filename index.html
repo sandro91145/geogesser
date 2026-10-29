@@ -3,14 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Onde? — guess where the photo was taken</title>
-  <meta name="description" content="A free geography guessing game. Five real photos from somewhere on Earth — drop a pin where you think each was taken.">
+  <title>Onde? — where in the world are you?</title>
+  <meta name="description" content="A free geography guessing game. Drop into a random street somewhere on Earth, look around in 360°, and pin where you think you are.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16 2a10 10 0 0 0-10 10c0 7.5 10 18 10 18s10-10.5 10-18A10 10 0 0 0 16 2z' fill='%23F2B705' stroke='%2316243A' stroke-width='2.5'/><circle cx='16' cy='12' r='3.5' fill='%2316243A'/></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/core@5.15.1/index.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/markers-plugin@5.15.1/index.css">
+  <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
 
@@ -18,12 +20,47 @@
   <main id="start" class="screen start">
     <div class="start-inner">
       <h1 class="wordmark">Onde?</h1>
-      <p class="lede">Five real photos from somewhere on Earth. Drop a pin where you think each one was taken — the closer you are, the more points you get.</p>
+      <p class="lede">You're dropped somewhere on Earth. Look around, find the clues, and pin where you think you are. Five rounds, up to 5,000 points each.</p>
+
+      <section class="daily" id="daily" aria-labelledby="dailyTitle">
+        <div class="daily-text">
+          <h2 id="dailyTitle">Daily challenge</h2>
+          <p id="dailyLine">The same five places for everyone today, anywhere in the world.</p>
+        </div>
+        <div class="daily-actions" id="dailyActions">
+          <button type="button" class="btn btn-primary" id="dailyBtn">Play today's challenge</button>
+        </div>
+      </section>
+
+      <section class="challenge" id="challenge" hidden aria-labelledby="challengeTitle">
+        <h2 id="challengeTitle">A friend challenged you</h2>
+        <p id="challengeLine"></p>
+        <div class="challenge-actions">
+          <button type="button" class="btn btn-primary" id="challengeBtn">Play their rounds</button>
+          <button type="button" class="btn btn-outline" id="challengeDismiss">Not now</button>
+        </div>
+      </section>
 
       <form id="setup" class="setup">
+        <h2 class="setup-title">Custom game</h2>
+        <fieldset>
+          <legend>What you see</legend>
+          <div class="chips">
+            <label class="chip"><input type="radio" name="mode" value="street" checked><span>Street view (360°)</span></label>
+            <label class="chip"><input type="radio" name="mode" value="photo"><span>Photos of places</span></label>
+          </div>
+        </fieldset>
         <fieldset>
           <legend>Where to play</legend>
           <div class="chips" id="regionChips"></div>
+        </fieldset>
+        <fieldset id="moveField">
+          <legend>Movement</legend>
+          <div class="chips">
+            <label class="chip"><input type="radio" name="move" value="move" checked><span>Move</span></label>
+            <label class="chip"><input type="radio" name="move" value="nomove"><span>No moving</span></label>
+            <label class="chip"><input type="radio" name="move" value="nmpz"><span>No moving, panning or zooming</span></label>
+          </div>
         </fieldset>
         <fieldset>
           <legend>Time per round</legend>
@@ -41,38 +78,52 @@
       </form>
     </div>
     <footer class="start-foot">
-      Photos from <a href="https://commons.wikimedia.org" target="_blank" rel="noopener">Wikimedia Commons</a> contributors. Map © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors
+      Street imagery from <a href="https://panoramax.fr" target="_blank" rel="noopener">Panoramax</a><span id="mlyCredit" hidden> and <a href="https://www.mapillary.com" target="_blank" rel="noopener">Mapillary</a></span> contributors.
+      Photos from <a href="https://commons.wikimedia.org" target="_blank" rel="noopener">Wikimedia Commons</a> contributors.
+      Map © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors.
     </footer>
   </main>
 
   <!-- GAME -->
   <div id="game" class="screen game" hidden>
     <header class="hud">
-      <button class="hud-brand" id="quitBtn" title="Back to start">Onde?</button>
+      <div class="hud-left">
+        <button class="hud-brand" id="quitBtn" title="Back to start">Onde?</button>
+        <button class="compass" id="compass" type="button" title="Face north" aria-label="Compass. Select to face north." hidden>
+          <span class="compass-rose" id="compassRose"><span class="compass-n">N</span></span>
+        </button>
+      </div>
       <div class="hud-stats">
-        <div class="hud-stat"><span class="hud-k">Round</span><span class="hud-v" id="hudRound">1/5</span></div>
+        <div class="hud-stat"><span class="hud-k" id="hudRoundLabel">Round</span><span class="hud-v" id="hudRound">1/5</span></div>
         <div class="hud-stat"><span class="hud-k">Score</span><span class="hud-v" id="hudScore">0</span></div>
         <div class="hud-stat hud-timer" id="hudTimerWrap" hidden><span class="hud-k">Time</span><span class="hud-v" id="hudTimer">2:00</span></div>
       </div>
     </header>
 
-    <section class="stage" id="stage" aria-label="Photo to locate">
+    <section class="stage" id="stage" aria-label="Where are you?">
       <div class="stage-blur" id="stageBlur"></div>
       <img class="stage-img" id="stageImg" alt="A photo taken somewhere in the world. Find where." draggable="false">
-      <div class="stage-hint">Click the photo to zoom</div>
+      <div class="pano" id="pano" hidden></div>
+      <div class="stage-hint" id="stageHint">Click the photo to zoom</div>
+      <div class="stage-tools" id="stageTools" hidden>
+        <button class="btn btn-ghost" id="returnBtn" type="button">Back to start</button>
+      </div>
       <div class="stage-credit" id="stageCredit"></div>
 
       <div class="loading" id="loading">
         <div class="loading-pin" aria-hidden="true"></div>
         <p id="loadingText">Finding a place…</p>
-        <button class="btn btn-primary" id="retryBtn" hidden>Try again</button>
+        <div class="loading-actions">
+          <button class="btn btn-primary" id="retryBtn" hidden>Try again</button>
+          <button class="btn btn-ghost" id="switchBtn" hidden>Play with photos instead</button>
+        </div>
       </div>
     </section>
 
     <aside class="guess" id="guessPanel">
       <div class="guess-map" id="guessMap"></div>
       <div class="guess-actions">
-        <button class="btn btn-ghost guess-close" id="closeMapBtn" type="button">Back to photo</button>
+        <button class="btn btn-ghost guess-close" id="closeMapBtn" type="button">Back to view</button>
         <button class="btn btn-primary guess-btn" id="guessBtn" type="button" disabled>Place a pin on the map</button>
       </div>
     </aside>
@@ -86,6 +137,6 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-  <script type="module" src="js/app.js?v=5"></script>
+  <script type="module" src="js/app.js?v=6"></script>
 </body>
 </html>

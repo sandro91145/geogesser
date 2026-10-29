@@ -1,4 +1,5 @@
-import { REGIONS } from './seeds.js?v=5';
+import { REGIONS } from './seeds.js?v=6';
+import { StreetViewer, findPano, panoFromSpec, panoSpec, panoramaxCandidates, preloadPano, hasMapillary } from './street.js?v=6';
 
 const ROUNDS = 5;
 const MAX_POINTS = 5000;
@@ -11,25 +12,31 @@ const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').match
 
 const state = {
   regionKey: 'world',
+  mode: 'street',        // street | photo
+  move: 'move',          // move | nomove | nmpz
   timerSecs: 0,
+  kind: 'custom',        // custom | daily | challenge
+  dailyDate: null,
+  challenge: null,       // decoded challenge payload
   round: 0,
   total: 0,
   results: [],           // { loc, guess, km, points }
-  current: null,         // location for this round
-  guess: null,           // L.LatLng
+  current: null,
+  guess: null,
   usedTitles: new Set(),
-  prefetch: null,        // Promise<location>
+  prefetch: null,
   timerId: null,
   deadline: 0,
   phase: 'idle',         // idle | loading | guessing | result | summary
+  gameId: 0,
 };
 
-/* ---------------- storage (best scores) ---------------- */
+/* ---------------- storage ---------------- */
 const store = {
   get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } },
 };
-const bestKey = (region, timer) => `onde.best.${region}.${timer}`;
+const bestKey = () => `onde.best.${state.mode}.${state.regionKey}.${state.timerSecs}${state.mode === 'street' ? '.' + state.move : ''}`;
 
 /* ---------------- helpers ---------------- */
 const fmt = (n) => Math.round(n).toLocaleString('en-US');
@@ -45,11 +52,26 @@ function haversine(a, b) {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
 }
 const scoreFor = (km, scale) => (km < 0.05 ? MAX_POINTS : Math.round(MAX_POINTS * Math.exp(-km / scale)));
-const shuffle = (arr) => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
-function niceTitle(title) {
-  return title.replace(/^File:/, '').replace(/\.[a-z0-9]+$/i, '').replace(/_/g, ' ').trim();
-}
+const shuffle = (arr, rnd = Math.random) => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
+const niceTitle = (t) => t.replace(/^File:/, '').replace(/\.[a-z0-9]+$/i, '').replace(/_/g, ' ').trim();
 const looksLikeCameraName = (t) => /^(img|dsc|dscf|dscn|pxl|p\d|photo|image|cimg|sam|gopr|dji)[\s_-]?\d/i.test(t) || /^\d[\d\s_-]*$/.test(t);
+const escapeHTML = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// Seeded random numbers, so the daily challenge is the same for everyone.
+function seededRandom(seedText) {
+  let h = 1779033703 ^ seedText.length;
+  for (let i = 0; i < seedText.length; i++) { h = Math.imul(h ^ seedText.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19); }
+  let a = h >>> 0;
+  return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+const todayUTC = () => new Date().toISOString().slice(0, 10);
+const prettyDate = (iso) => new Date(iso + 'T12:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
+
+// Challenge links: rounds + settings packed into the URL hash.
+const b64url = {
+  encode: (obj) => btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(obj)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''),
+  decode: (s) => JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)))),
+};
 
 async function fetchJSON(url, ms = 9000) {
   const ctl = new AbortController();
@@ -71,16 +93,18 @@ function preloadImage(src) {
   });
 }
 
-/* ---------------- finding a location ---------------- */
-// Each round: pick a seed point in the region, nudge it, ask Wikidata for places
-// with a photo nearby (fast, ~0.5 s), then get size + credits for those photos
-// from Wikimedia Commons. If that fails, fall back to data/fallback.json.
+const SEEN_KEY = 'onde.seen';
+const seenTitles = () => new Set(store.get(SEEN_KEY) || []);
+function rememberSeen(id) {
+  const seen = store.get(SEEN_KEY) || [];
+  seen.push(id);
+  store.set(SEEN_KEY, seen.slice(-500));
+}
+
+/* ---------------- photo mode (Wikidata + Commons) ---------------- */
 const SPARQL = 'https://query.wikidata.org/sparql';
 const COMMONS = 'https://commons.wikimedia.org/w/api.php';
-
-// File names that usually mean "not a photo of a place".
 const BAD_FILE = /\b(map|maps|karte|carte|mapa|plan|lageplan|logo|flag|bandeira|bandera|drapeau|coat of arms|wappen|bras[aã]o|escudo|blason|seal|emblem|diagram|chart|scan|document|signature|stamp|coin|banknote|poster|book|page|letter|manuscript|screenshot|satellite|portrait|painting|museum|exhibit|artefact|artifact|fossil|specimen|herbarium|inscription|plaque|grave|tomb|x-ray|microscop|aerial|a[eé]rea|from the air|from space|view of earth|iss\d+|flight|voo|vuelo|airplane|aircraft window|selfie|location|locator)\b/i;
-
 const commonsPage = (file) => `https://commons.wikimedia.org/wiki/File:${encodeURIComponent(file.replace(/ /g, '_'))}`;
 const commonsThumb = (file) => `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(file.replace(/ /g, '_'))}?width=1280`;
 
@@ -89,25 +113,14 @@ function htmlToText(html, max = 200) {
   const text = new DOMParser().parseFromString(html, 'text/html').body.textContent.replace(/\s+/g, ' ').trim();
   return text.length > max ? text.slice(0, max - 1).trimEnd() + '…' : text;
 }
-
-// Commons sometimes stores the author as just "Self" or "Own work".
 const cleanArtist = (a) => (!a || /^(self|own work|unknown|anonymous)$/i.test(a) ? 'a Wikimedia Commons contributor' : a);
 
-// Move a point a random distance (up to maxKm) in a random direction.
 function jitter([lat, lng], maxKm) {
   const d = Math.sqrt(Math.random()) * maxKm;
   const theta = Math.random() * 2 * Math.PI;
   const dLat = (d * Math.cos(theta)) / 111;
   const dLng = (d * Math.sin(theta)) / (111 * Math.max(0.2, Math.cos(lat * Math.PI / 180)));
   return [Math.max(-85, Math.min(85, lat + dLat)), ((lng + dLng + 540) % 360) - 180];
-}
-
-const SEEN_KEY = 'onde.seen';
-const seenTitles = () => new Set(store.get(SEEN_KEY) || []);
-function rememberSeen(title) {
-  const seen = store.get(SEEN_KEY) || [];
-  seen.push(title);
-  store.set(SEEN_KEY, seen.slice(-500));
 }
 
 async function placesNear([lat, lng], radiusKm) {
@@ -121,11 +134,7 @@ async function placesNear([lat, lng], radiusKm) {
   return (data?.results?.bindings || []).map((b) => {
     const m = b.loc.value.match(/Point\(([-\d.eE]+) ([-\d.eE]+)\)/);
     if (!m) return null;
-    return {
-      file: decodeURIComponent(b.image.value.split('/').pop()).replace(/_/g, ' '),
-      lat: +m[2], lng: +m[1],
-      label: b.lbl?.value || '',
-    };
+    return { file: decodeURIComponent(b.image.value.split('/').pop()).replace(/_/g, ' '), lat: +m[2], lng: +m[1], label: b.lbl?.value || '' };
   }).filter(Boolean);
 }
 
@@ -139,17 +148,29 @@ async function fileInfo(files) {
   const data = await fetchJSON(`${COMMONS}?${p}`, 8000);
   const byFile = new Map();
   for (const pg of data?.query?.pages || []) if (pg.imageinfo) byFile.set(pg.title.replace(/^File:/, ''), pg.imageinfo[0]);
-  // Commons may normalise titles; map those back to what we asked for.
   for (const n of data?.query?.normalized || []) {
     const ii = byFile.get(n.to.replace(/^File:/, ''));
     if (ii) byFile.set(n.from.replace(/^File:/, ''), ii);
   }
   return byFile;
 }
-
 const goodSize = (ii) => ii && ii.mime === 'image/jpeg' && ii.width >= 1000 && ii.height >= 600 && ii.width / ii.height >= 0.6 && ii.width / ii.height <= 2.7;
 
-async function findLive() {
+function photoLoc(pl, ii) {
+  const md = ii.extmetadata || {};
+  return {
+    kind: 'photo', id: pl.file, title: pl.file,
+    name: pl.label || niceTitle(pl.file),
+    lat: pl.lat, lng: pl.lng,
+    src: (ii.thumburl || ii.url).replace(/\?.*$/, ''),
+    page: (ii.descriptionurl || commonsPage(pl.file)).replace(/\?.*$/, ''),
+    author: cleanArtist(htmlToText(md.Artist?.value, 80)),
+    license: htmlToText(md.LicenseShortName?.value, 40),
+    desc: htmlToText(md.ImageDescription?.value),
+  };
+}
+
+async function findPhoto() {
   const region = REGIONS[state.regionKey];
   const seen = seenTitles();
   let lastErr = new Error('No photos found');
@@ -167,29 +188,17 @@ async function findLive() {
         const ii = info.get(pl.file);
         if (!goodSize(ii)) continue;
         if (tries++ >= 2) break;
-        const src = (ii.thumburl || ii.url).replace(/\?.*$/, '');
-        try {
-          await preloadImage(src);
-          const md = ii.extmetadata || {};
-          return {
-            title: pl.file,
-            name: pl.label || niceTitle(pl.file),
-            lat: pl.lat, lng: pl.lng,
-            src,
-            page: (ii.descriptionurl || commonsPage(pl.file)).replace(/\?.*$/, ''),
-            artist: cleanArtist(htmlToText(md.Artist?.value, 80)),
-            license: htmlToText(md.LicenseShortName?.value, 40),
-            desc: htmlToText(md.ImageDescription?.value),
-          };
-        } catch { /* image failed — try the next one */ }
+        const loc = photoLoc(pl, ii);
+        try { await preloadImage(loc.src); return loc; } catch { /* next */ }
       }
     } catch (e) { lastErr = e; }
   }
-  throw lastErr;
+  // Wikidata unreachable: use the built-in photos.
+  try { return await findFallbackPhoto(); } catch { throw lastErr; }
 }
 
 let fallbackPromise = null;
-async function findFallback() {
+async function findFallbackPhoto() {
   fallbackPromise ||= fetchJSON('data/fallback.json', 10000).catch((e) => { fallbackPromise = null; throw e; });
   const pool = await fallbackPromise;
   const list = state.regionKey === 'world' ? Object.values(pool).flat() : (pool[state.regionKey] || []);
@@ -200,18 +209,67 @@ async function findFallback() {
     const src = commonsThumb(e.t);
     try {
       await preloadImage(src);
-      return { title: e.t, name: e.n || niceTitle(e.t), lat: e.la, lng: e.lo, src, page: commonsPage(e.t), artist: cleanArtist(e.a), license: e.l || '', desc: '' };
+      return { kind: 'photo', id: e.t, title: e.t, name: e.n || niceTitle(e.t), lat: e.la, lng: e.lo, src, page: commonsPage(e.t), author: cleanArtist(e.a), license: e.l || '', desc: '' };
     } catch { /* next */ }
   }
   throw new Error('Photos failed to load');
 }
 
-async function findLocation() {
-  let loc;
-  try { loc = await findLive(); } catch (e) { console.warn('Live search failed, using built-in photos:', e); loc = await findFallback(); }
-  state.usedTitles.add(loc.title);
-  rememberSeen(loc.title);
+async function photoFromSpec([, title, lat, lng, label]) {
+  const ii = (await fileInfo([title])).get(title);
+  if (!ii) throw new Error('Photo not found');
+  const loc = photoLoc({ file: title, lat, lng, label }, ii);
+  await preloadImage(loc.src);
   return loc;
+}
+
+/* ---------------- locations: specs, daily, finding ---------------- */
+const specOf = (loc) => (loc.kind === 'pano' ? panoSpec(loc) : ['w', loc.title, +loc.lat.toFixed(5), +loc.lng.toFixed(5), loc.name === niceTitle(loc.title) ? '' : loc.name]);
+
+async function locFromSpec(spec) {
+  if (spec[0] === 'w') return photoFromSpec(spec);
+  const pano = await panoFromSpec(spec);
+  await preloadPano(pano.src);
+  return pano;
+}
+
+// Daily: each round draws from a random generator seeded with the date and round
+// number, over the same Panoramax coverage and the same sorted search results.
+async function dailyLocation(i) {
+  const rnd = seededRandom(`onde-daily-${state.dailyDate}-${i}`);
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const list = (await panoramaxCandidates(REGIONS.world, rnd)).filter((f) => !state.usedTitles.has(f.id));
+    if (!list.length) continue;
+    const f = list[Math.floor(rnd() * list.length)];
+    return locFromSpec(['x', f.id]);
+  }
+  throw new Error('Daily challenge unavailable');
+}
+
+async function findLocation(roundNo) {
+  let loc;
+  if (state.kind === 'challenge') loc = await locFromSpec(state.challenge.s[roundNo - 1]);
+  else if (state.kind === 'daily') loc = await dailyLocation(roundNo);
+  else if (state.mode === 'street') loc = await findPano(REGIONS[state.regionKey], state.usedTitles);
+  else loc = await findPhoto();
+  state.usedTitles.add(String(loc.id));
+  if (state.kind === 'custom') rememberSeen(String(loc.id));
+  return loc;
+}
+
+// Town/region + country for the result card (only fetched after the guess).
+async function placeName(loc) {
+  if (loc.place !== undefined) return loc.place;
+  try {
+    const d = await fetchJSON(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10&accept-language=en&lat=${loc.lat}&lon=${loc.lng}`, 5000);
+    const a = d.address || {};
+    const local = a.city || a.town || a.village || a.municipality || a.county || a.state_district || a.state || '';
+    const cc = (a.country_code || '').toUpperCase();
+    const flag = /^[A-Z]{2}$/.test(cc) ? String.fromCodePoint(...[...cc].map((c) => 0x1F1A5 + c.charCodeAt(0))) : '';
+    loc.place = [local, a.country].filter(Boolean).join(', ');
+    loc.flag = flag;
+  } catch { loc.place = ''; }
+  return loc.place;
 }
 
 /* ---------------- maps ---------------- */
@@ -222,7 +280,7 @@ function makePin(kind, label = '') {
     className: '',
     html: `<div class="pin pin-${kind}">${label ? `<span class="pin-label">${label}</span>` : ''}</div>`,
     iconSize: [26, 26],
-    iconAnchor: [13, 31],  // tip of the rotated teardrop
+    iconAnchor: [13, 31],
   });
 }
 
@@ -260,7 +318,6 @@ function updateGuessButton() {
   btn.textContent = state.guess ? 'Guess' : 'Place a pin on the map';
 }
 
-// Shift `to` by ±360° so the line between the two takes the short way round.
 function nearCopy(from, to) {
   let lng = to.lng;
   while (lng - from.lng > 180) lng -= 360;
@@ -268,64 +325,126 @@ function nearCopy(from, to) {
   return L.latLng(to.lat, lng);
 }
 
-function animateLine(from, to, done) {
+function animateLine(from, to) {
   const line = L.polyline([from, from], { color: '#16243A', weight: 3, dashArray: '2 8', lineCap: 'round' }).addTo(resultLayer);
-  if (reduceMotion) { line.setLatLngs([from, to]); done?.(); return; }
+  if (reduceMotion) { line.setLatLngs([from, to]); return; }
   const start = performance.now(), dur = 800;
   const step = (now) => {
     const t = Math.min(1, (now - start) / dur);
     const e = 1 - Math.pow(1 - t, 3);
     line.setLatLngs([from, L.latLng(from.lat + (to.lat - from.lat) * e, from.lng + (to.lng - from.lng) * e)]);
-    if (t < 1) requestAnimationFrame(step); else done?.();
+    if (t < 1) requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
 }
 
-/* ---------------- screens ---------------- */
-function showStart() {
-  stopTimer();
-  state.gameId = (state.gameId || 0) + 1;
-  state.prefetch = null;
-  state.phase = 'idle';
-  $('game').hidden = true;
-  $('start').hidden = false;
-  renderBest();
-  document.querySelector('#setup button[type=submit]').focus({ preventScroll: true });
+/* ---------------- street viewer ---------------- */
+let viewer = null;
+function getViewer() {
+  viewer ||= new StreetViewer($('pano'), {
+    onHeading: (deg) => { $('compassRose').style.transform = `rotate(${-deg}deg)`; },
+  });
+  return viewer;
 }
 
+/* ---------------- start screen ---------------- */
 function renderRegions() {
-  const wrap = $('regionChips');
-  wrap.innerHTML = Object.entries(REGIONS).map(([key, r]) =>
+  $('regionChips').innerHTML = Object.entries(REGIONS).map(([key, r]) =>
     `<label class="chip"><input type="radio" name="region" value="${key}" ${key === state.regionKey ? 'checked' : ''}><span>${r.label}</span></label>`
   ).join('');
 }
 
-function renderBest() {
+function readForm() {
   const form = $('setup');
-  const region = form.region.value, timer = form.timer.value;
-  const best = store.get(bestKey(region, timer));
-  $('bestLine').innerHTML = best
-    ? `Your best in ${REGIONS[region].label}: <strong>${fmt(best)}</strong>`
-    : `No score yet in ${REGIONS[region].label}.`;
+  state.mode = form.mode.value;
+  state.regionKey = form.region.value;
+  state.move = form.move.value;
+  state.timerSecs = Number(form.timer.value);
 }
 
-function startGame() {
-  const form = $('setup');
-  state.regionKey = form.region.value;
-  state.timerSecs = Number(form.timer.value);
-  state.gameId = (state.gameId || 0) + 1;
+function renderSetup() {
+  readForm();
+  $('moveField').hidden = state.mode !== 'street';
+  const best = store.get(bestKey());
+  const where = REGIONS[state.regionKey].label;
+  $('bestLine').innerHTML = best ? `Your best with these settings: <strong>${fmt(best)}</strong>` : `No score yet for ${where} with these settings.`;
+}
+
+function renderDaily() {
+  const date = todayUTC();
+  const done = store.get(`onde.daily.${date}`);
+  $('dailyTitle').textContent = `Daily challenge · ${prettyDate(date)}`;
+  if (done) {
+    $('dailyLine').innerHTML = `You scored <strong>${fmt(done.total)}</strong> today. New places tomorrow.`;
+    $('dailyActions').innerHTML = `
+      <button type="button" class="btn btn-outline" id="dailyCopy">Copy result</button>
+      <button type="button" class="btn btn-outline" id="dailyAgain">Play again for fun</button>`;
+    $('dailyCopy').addEventListener('click', (e) => copyText(dailyShareText(done), e.currentTarget, 'Copy result'));
+    $('dailyAgain').addEventListener('click', () => startDaily());
+  } else {
+    $('dailyLine').textContent = 'The same five street views for everyone today, anywhere in the world.';
+    $('dailyActions').innerHTML = `<button type="button" class="btn btn-primary" id="dailyBtn">Play today's challenge</button>`;
+    $('dailyBtn').addEventListener('click', () => startDaily());
+  }
+}
+
+function renderChallenge() {
+  const c = state.challenge;
+  $('challenge').hidden = !c;
+  if (!c) return;
+  const mode = c.m === 'street' ? `street view${c.mv === 'move' ? '' : c.mv === 'nomove' ? ', no moving' : ', no moving, panning or zooming'}` : 'photos';
+  $('challengeLine').textContent = `${REGIONS[c.r]?.label || 'World'}, ${mode}${c.t ? `, ${c.t}s per round` : ''}. ${c.p ? `Their score: ${fmt(c.p)}.` : ''}`;
+}
+
+function showStart() {
+  stopTimer();
+  state.gameId++;
+  state.prefetch = null;
+  state.phase = 'idle';
+  $('game').hidden = true;
+  $('start').hidden = false;
+  renderDaily();
+  renderChallenge();
+  renderSetup();
+}
+
+/* ---------------- game flow ---------------- */
+function beginGame() {
+  state.gameId++;
   state.round = 0;
   state.total = 0;
   state.results = [];
   state.usedTitles.clear();
   state.prefetch = null;
-
   $('start').hidden = true;
   $('game').hidden = false;
   $('hudTimerWrap').hidden = !state.timerSecs;
   $('hudScore').textContent = '0';
+  $('hudRoundLabel').textContent = state.kind === 'daily' ? 'Daily' : state.kind === 'challenge' ? 'Challenge' : 'Round';
   if (!guessMap) initMaps();
   nextRound();
+}
+
+function startCustom() { readForm(); state.kind = 'custom'; beginGame(); }
+
+function startDaily() {
+  state.kind = 'daily';
+  state.dailyDate = todayUTC();
+  state.mode = 'street';
+  state.regionKey = 'world';
+  state.move = 'move';
+  state.timerSecs = 0;
+  beginGame();
+}
+
+function startChallenge() {
+  const c = state.challenge;
+  state.kind = 'challenge';
+  state.mode = c.m;
+  state.regionKey = REGIONS[c.r] ? c.r : 'world';
+  state.move = c.mv || 'move';
+  state.timerSecs = c.t || 0;
+  beginGame();
 }
 
 async function nextRound() {
@@ -339,35 +458,60 @@ async function nextRound() {
   showLoading('Finding a place…');
   resetGuessMap();
 
-  const gameId = state.gameId;
+  const gameId = state.gameId, roundNo = state.round;
   try {
     let loc = state.prefetch ? await state.prefetch : null;
     state.prefetch = null;
-    if (!loc) loc = await findLocation();
-    if (gameId !== state.gameId) return;   // player left or restarted meanwhile
+    if (!loc) loc = await findLocation(roundNo);
+    if (gameId !== state.gameId) return;
     state.current = loc;
-    $('stageImg').src = loc.src;
-    $('stageBlur').style.backgroundImage = `url("${loc.src}")`;
-    $('stageCredit').textContent = `Photo: ${loc.artist}${loc.license ? `, ${loc.license}` : ''} — Wikimedia Commons`;
+    await showLocation(loc);
+    if (gameId !== state.gameId) return;
     hideLoading();
     state.phase = 'guessing';
     startTimer();
-    // Fetch the next photo while this round is played.
-    if (state.round < ROUNDS) state.prefetch = findLocation().catch(() => null);
+    if (roundNo < ROUNDS) state.prefetch = findLocation(roundNo + 1).catch(() => null);
   } catch (err) {
     if (gameId !== state.gameId) return;
     console.error(err);
     state.round -= 1;
-    showLoading("Couldn't load a photo from Wikimedia Commons. Check your connection and try again.", true);
+    const street = state.mode === 'street';
+    showLoading(street
+      ? "Couldn't load a street view. The imagery servers may be busy. Try again, or switch to photos."
+      : "Couldn't load a photo from Wikimedia Commons. Check your connection and try again.", true, street && state.kind === 'custom');
   }
 }
 
-function showLoading(text, isError = false) {
+async function showLocation(loc) {
+  const isPano = loc.kind === 'pano';
+  $('stageImg').hidden = isPano;
+  $('stageBlur').hidden = isPano;
+  $('pano').hidden = !isPano;
+  $('compass').hidden = !isPano;
+  $('stageTools').hidden = !(isPano && state.move === 'move');
+  if (isPano) {
+    const v = getViewer();
+    v.setMode(state.move);
+    await v.show(loc, { first: true });
+    v.setMode(state.move);
+    $('stageCredit').textContent = `Imagery: ${loc.source === 'mapillary' ? 'Mapillary' : 'Panoramax'} contributors`;
+    $('stageHint').textContent = state.move === 'nmpz' ? 'No moving, panning or zooming' : state.move === 'move' ? 'Drag to look around · click the arrows or press ↑ to walk' : 'Drag to look around';
+  } else {
+    $('stageImg').src = loc.src;
+    $('stageBlur').style.backgroundImage = `url("${loc.src}")`;
+    $('stageCredit').textContent = 'Photo: Wikimedia Commons';
+    $('stageHint').textContent = 'Click the photo to zoom';
+  }
+  $('stageHint').hidden = state.round > 1;
+}
+
+function showLoading(text, isError = false, offerSwitch = false) {
   const el = $('loading');
   el.hidden = false;
   el.classList.toggle('error', isError);
   $('loadingText').textContent = text;
   $('retryBtn').hidden = !isError;
+  $('switchBtn').hidden = !offerSwitch;
 }
 function hideLoading() { $('loading').hidden = true; }
 
@@ -394,21 +538,20 @@ function submitGuess(timedOut = false) {
   state.phase = 'result';
   const loc = state.current;
   const truth = L.latLng(loc.lat, loc.lng);
-  const region = REGIONS[state.regionKey];
-
   let km = null, points = 0, guess = null;
   if (state.guess) {
     guess = state.guess.wrap();
     km = haversine(guess, truth);
-    points = scoreFor(km, region.scale);
+    points = scoreFor(km, REGIONS[state.regionKey].scale);
   }
   state.total += points;
   state.results.push({ loc, guess, km, points });
   $('hudScore').textContent = fmt(state.total);
   $('guessPanel').classList.remove('open');
-
   showRoundResult({ loc, guess, km, points, timedOut });
 }
+
+const sourceName = (loc) => (loc.kind === 'photo' ? 'Wikimedia Commons' : loc.source === 'mapillary' ? 'Mapillary' : 'Panoramax');
 
 function showRoundResult({ loc, guess, km, points, timedOut }) {
   $('result').hidden = false;
@@ -417,25 +560,30 @@ function showRoundResult({ loc, guess, km, points, timedOut }) {
 
   const truth = L.latLng(loc.lat, loc.lng);
   const last = state.round >= ROUNDS;
-  const card = $('resultCard');
   const pct = Math.round((points / MAX_POINTS) * 100);
+  const title = loc.kind === 'photo' && !looksLikeCameraName(loc.name) ? `<p class="r-place">${escapeHTML(loc.name)}</p>` : '';
 
-  const placeLine = looksLikeCameraName(loc.name) ? '' : `<p class="r-place">${escapeHTML(loc.name)}</p>`;
-  card.innerHTML = `
+  $('resultCard').innerHTML = `
     <div class="r-top">
       <p class="r-dist">${guess ? `<strong id="rDist">0 km</strong> away` : `<strong>${timedOut ? 'Out of time' : 'No guess'}</strong>`}</p>
       <p class="r-points" id="rPoints">+${fmt(points)}</p>
     </div>
     <div class="r-bar" role="img" aria-label="${pct}% of the maximum"><i id="rBar"></i></div>
-    ${placeLine}
+    ${title}
+    <p class="r-where" id="rWhere"></p>
     ${loc.desc && loc.desc !== loc.name ? `<p class="r-desc">${escapeHTML(loc.desc)}</p>` : ''}
-    <p class="r-credit">Photo by ${escapeHTML(loc.artist)}${loc.license ? `, ${escapeHTML(loc.license)}` : ''}. <a href="${loc.page}" target="_blank" rel="noopener">View on Wikimedia Commons</a></p>
+    <p class="r-credit">${loc.kind === 'photo' ? 'Photo' : 'Imagery'} by ${escapeHTML(loc.author)}${loc.license ? `, ${escapeHTML(loc.license)}` : ''}. <a href="${loc.page}" target="_blank" rel="noopener">View on ${sourceName(loc)}</a></p>
     <div class="r-actions">
       <button class="btn btn-primary" id="nextBtn">${last ? 'See final score' : 'Next round'}</button>
     </div>`;
 
-  const truthMarker = L.marker(truth, { icon: makePin('truth'), keyboard: false }).addTo(resultLayer);
-  truthMarker.bindTooltip('Photo location', { direction: 'top', offset: [10, -28] });
+  placeName(loc).then((place) => {
+    const el = $('rWhere');
+    if (el && place) el.textContent = `${loc.flag ? loc.flag + ' ' : ''}${place}`;
+  });
+
+  L.marker(truth, { icon: makePin('truth'), keyboard: false }).addTo(resultLayer)
+    .bindTooltip(loc.kind === 'pano' ? 'Where you were' : 'Photo location', { direction: 'top', offset: [10, -28] });
 
   if (guess) {
     const near = nearCopy(truth, guess);
@@ -452,10 +600,7 @@ function showRoundResult({ loc, guess, km, points, timedOut }) {
   $('nextBtn').focus({ preventScroll: true });
 }
 
-function cardPadding() {
-  const card = $('resultCard');
-  return (card?.offsetHeight || 220) + 40;
-}
+const cardPadding = () => ($('resultCard')?.offsetHeight || 220) + 40;
 
 function countUp(el, km) {
   if (!el) return;
@@ -469,13 +614,37 @@ function countUp(el, km) {
   requestAnimationFrame(step);
 }
 
+const blocks = (pts) => pts.map((p) => (p >= 4000 ? '🟩' : p >= 2000 ? '🟨' : p > 0 ? '🟧' : '⬛')).join('');
+const baseUrl = () => location.href.split('#')[0].split('?')[0];
+const dailyShareText = (d) => `Onde? Daily ${prettyDate(d.date)}: ${fmt(d.total)}/${fmt(MAX_POINTS * ROUNDS)}\n${blocks(d.points)}\n${baseUrl()}`;
+
+function challengeLink() {
+  const payload = { v: 1, m: state.mode, r: state.regionKey, mv: state.move, t: state.timerSecs, p: state.total, s: state.results.map((r) => specOf(r.loc)) };
+  return `${baseUrl()}#c=${b64url.encode(payload)}`;
+}
+
 function showSummary() {
   state.phase = 'summary';
   const region = REGIONS[state.regionKey];
-  const key = bestKey(state.regionKey, state.timerSecs);
-  const prevBest = store.get(key) || 0;
-  const isBest = state.total > prevBest;
-  if (isBest) store.set(key, state.total);
+  const points = state.results.map((r) => r.points);
+  let sub;
+
+  if (state.kind === 'daily') {
+    const key = `onde.daily.${state.dailyDate}`;
+    const first = !store.get(key);
+    if (first) store.set(key, { date: state.dailyDate, total: state.total, points });
+    sub = first ? `Daily challenge, ${prettyDate(state.dailyDate)}. Come back tomorrow for five new places.` : `Practice run. Your official score today is ${fmt(store.get(key).total)}.`;
+  } else if (state.kind === 'challenge') {
+    const theirs = state.challenge.p;
+    sub = theirs ? (state.total > theirs ? `You beat your friend's ${fmt(theirs)}.` : state.total === theirs ? `A tie with your friend's ${fmt(theirs)}.` : `Your friend scored ${fmt(theirs)}.`) : 'Challenge complete.';
+  } else {
+    const key = bestKey();
+    const prevBest = store.get(key) || 0;
+    const isBest = state.total > prevBest;
+    if (isBest) store.set(key, state.total);
+    const what = state.mode === 'street' ? 'street view' : 'photos';
+    sub = `${region.label}, ${what}${state.timerSecs ? `, ${state.timerSecs}s per round` : ''}. ${isBest ? (prevBest ? 'New personal best.' : 'Your first score with these settings.') : `Your best is ${fmt(prevBest)}.`}`;
+  }
 
   resultLayer.clearLayers();
   resultMap.invalidateSize();
@@ -492,42 +661,48 @@ function showSummary() {
     }
   });
 
-  const rows = state.results.map((r) => {
-    const name = looksLikeCameraName(r.loc.name) ? (r.loc.desc || 'Untitled photo') : r.loc.name;
-    return `<li><span class="s-name" title="${escapeHTML(name)}">${escapeHTML(name)}</span>
-      <span class="s-pts">${fmt(r.points)}<span class="s-km">${r.km == null ? 'no guess' : fmtKm(r.km)}</span></span></li>`;
-  }).join('');
+  const rowName = (r) => {
+    if (r.loc.kind === 'photo' && !looksLikeCameraName(r.loc.name)) return r.loc.name;
+    return r.loc.place ? `${r.loc.flag ? r.loc.flag + ' ' : ''}${r.loc.place}` : 'Somewhere';
+  };
+  const rows = state.results.map((r, i) => `<li><span class="s-name" id="sName${i}" title="${escapeHTML(rowName(r))}">${escapeHTML(rowName(r))}</span>
+      <span class="s-pts">${fmt(r.points)}<span class="s-km">${r.km == null ? 'no guess' : fmtKm(r.km)}</span></span></li>`).join('');
 
   $('resultCard').innerHTML = `
     <p class="sum-total">${fmt(state.total)} <span>/ ${fmt(MAX_POINTS * ROUNDS)}</span></p>
-    <p class="sum-sub">${region.label}${state.timerSecs ? `, ${state.timerSecs}s per round` : ''}. ${isBest ? (prevBest ? 'New personal best.' : 'Your first score here.') : `Your best here is ${fmt(prevBest)}.`}</p>
+    <p class="sum-sub">${escapeHTML(sub)}</p>
     <ol class="sum-list">${rows}</ol>
     <div class="r-actions">
       <button class="btn btn-outline" id="copyBtn">Copy result</button>
-      <button class="btn btn-outline" id="menuBtn">Settings</button>
-      <button class="btn btn-primary" id="againBtn">Play again</button>
+      <button class="btn btn-outline" id="linkBtn">Challenge a friend</button>
+      <button class="btn btn-outline" id="menuBtn">Menu</button>
+      ${state.kind === 'custom' ? '<button class="btn btn-primary" id="againBtn">Play again</button>' : ''}
     </div>`;
+
+  // Fill in any place names that weren't looked up yet.
+  state.results.forEach((r, i) => {
+    if (r.loc.place === undefined && r.loc.kind === 'pano') placeName(r.loc).then(() => { const el = $(`sName${i}`); if (el) el.textContent = rowName(r); });
+  });
 
   resultMap.fitBounds(L.latLngBounds(bounds), { padding: [50, 50], paddingBottomRight: [50, cardPadding()], maxZoom: 8, animate: false });
 
-  $('againBtn').addEventListener('click', startGame);
-  $('menuBtn').addEventListener('click', showStart);
-  $('copyBtn').addEventListener('click', copyResult);
-  $('againBtn').focus({ preventScroll: true });
+  $('againBtn')?.addEventListener('click', startCustom);
+  $('menuBtn').addEventListener('click', () => { history.replaceState(null, '', baseUrl()); showStart(); });
+  $('linkBtn').addEventListener('click', (e) => copyText(`Can you beat ${fmt(state.total)} on Onde?\n${challengeLink()}`, e.currentTarget, 'Challenge a friend', 'Link copied'));
+  $('copyBtn').addEventListener('click', (e) => {
+    const text = state.kind === 'daily'
+      ? dailyShareText({ date: state.dailyDate, total: state.total, points })
+      : `Onde? ${region.label}: ${fmt(state.total)}/${fmt(MAX_POINTS * ROUNDS)}\n${blocks(points)}\n${baseUrl()}`;
+    copyText(text, e.currentTarget, 'Copy result');
+  });
+  ($('againBtn') || $('linkBtn')).focus({ preventScroll: true });
 }
 
-function copyResult() {
-  const blocks = state.results.map((r) => (r.points >= 4000 ? '🟩' : r.points >= 2000 ? '🟨' : r.points > 0 ? '🟧' : '⬛')).join('');
-  const text = `Onde? ${REGIONS[state.regionKey].label}: ${fmt(state.total)}/${fmt(MAX_POINTS * ROUNDS)}\n${blocks}\n${location.href.split('#')[0]}`;
-  const btn = $('copyBtn');
+function copyText(text, btn, label, done = 'Copied') {
   navigator.clipboard?.writeText(text).then(
-    () => { btn.textContent = 'Copied'; setTimeout(() => (btn.textContent = 'Copy result'), 1800); },
+    () => { btn.textContent = done; setTimeout(() => (btn.textContent = label), 1800); },
     () => { btn.textContent = 'Copy failed'; }
   );
-}
-
-function escapeHTML(s) {
-  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
 /* ---------------- photo zoom ---------------- */
@@ -546,16 +721,34 @@ function panZoom(e) {
 }
 
 /* ---------------- wiring ---------------- */
+function readChallengeFromUrl() {
+  const m = location.hash.match(/#c=([A-Za-z0-9_-]+)/);
+  if (!m) return null;
+  try {
+    const c = b64url.decode(m[1]);
+    if (c?.v === 1 && Array.isArray(c.s) && c.s.length === ROUNDS && ['street', 'photo'].includes(c.m)) return c;
+  } catch { /* bad link */ }
+  return null;
+}
+
 renderRegions();
-$('setup').addEventListener('change', renderBest);
-$('setup').addEventListener('submit', (e) => { e.preventDefault(); startGame(); });
+if (hasMapillary()) $('mlyCredit').hidden = false;
+state.challenge = readChallengeFromUrl();
+
+$('setup').addEventListener('change', renderSetup);
+$('setup').addEventListener('submit', (e) => { e.preventDefault(); startCustom(); });
+$('challengeBtn').addEventListener('click', startChallenge);
+$('challengeDismiss').addEventListener('click', () => { state.challenge = null; history.replaceState(null, '', baseUrl()); renderChallenge(); });
 $('guessBtn').addEventListener('click', () => submitGuess());
 $('retryBtn').addEventListener('click', () => { state.prefetch = null; nextRound(); });
+$('switchBtn').addEventListener('click', () => { state.mode = 'photo'; state.prefetch = null; nextRound(); });
 $('quitBtn').addEventListener('click', () => {
   if (state.phase === 'summary' || confirm('Leave this game? Your score so far will be lost.')) showStart();
 });
 $('stageImg').addEventListener('click', toggleZoom);
 $('stageImg').addEventListener('mousemove', panZoom);
+$('compass').addEventListener('click', () => viewer?.faceNorth());
+$('returnBtn').addEventListener('click', () => viewer?.backToStart());
 $('openMapBtn').addEventListener('click', () => {
   $('guessPanel').classList.add('open');
   setTimeout(() => guessMap.invalidateSize(), 320);
@@ -565,9 +758,13 @@ $('guessPanel').addEventListener('transitionend', () => guessMap?.invalidateSize
 
 document.addEventListener('keydown', (e) => {
   if (e.target.matches('input, textarea')) return;
-  if ((e.key === ' ' || e.key === 'Enter') && state.phase === 'guessing' && state.guess && !e.target.matches('button')) {
-    e.preventDefault(); submitGuess();
+  if (state.phase !== 'guessing') return;
+  if ((e.key === ' ' || e.key === 'Enter') && state.guess && !e.target.matches('button')) { e.preventDefault(); submitGuess(); return; }
+  if (state.current?.kind === 'pano' && state.move === 'move' && viewer) {
+    if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') { e.preventDefault(); viewer.stepForward(); }
+    if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') { e.preventDefault(); viewer.stepForward(true); }
   }
 });
 
-renderBest();
+showStart();
+if (state.challenge) $('challengeBtn').focus({ preventScroll: true });
