@@ -11,6 +11,7 @@ You're dropped onto a random street somewhere on Earth. Look around in 360°, wa
 - **Street view (360°)** from [Mapillary](https://www.mapillary.com) and [Panoramax](https://panoramax.fr), with clickable arrows and ↑/↓ (or W/S) to walk, a compass (click it to face north) and "Back to start"
 - **Movement options** like GeoGuessr: Move, No moving, or No moving, panning or zooming
 - **Daily challenge**: the same five places for everyone each day, with a leaderboard and a shareable 🟩🟨🟧 result
+- **Live duels**: send a friend a link and play in real time. Same street for both; once one player guesses, the other has 15 seconds; the lower score loses the difference in health (6,000 each, damage multiplier grows from round 5)
 - **Challenge a friend**: copies a link that replays your exact five rounds and shows your score to beat
 - **Country streak**: click the country you think you're in; how many in a row can you get?
 - **Photos mode**: real photos of places from Wikimedia Commons
@@ -36,6 +37,10 @@ You're dropped onto a random street somewhere on Earth. Look around in 360°, wa
 
 The daily leaderboard is stored in a free [Supabase](https://supabase.com) project (`SUPABASE_URL` / `SUPABASE_KEY` in `js/config.js`). The table and its access rules are in `supabase/schema.sql`. The public key can only read scores and add one score per player per day for today, and the total must match the five round scores. Nothing can be edited or deleted from the game. Scores are submitted by the browser, so this can't fully prevent a determined cheater. That's fine for a friends leaderboard.
 
+## Live duels
+
+Duels use [Supabase Realtime](https://supabase.com/docs/guides/realtime) broadcast on the same project, with no database tables. Each duel is a channel named after its 6-letter code. The host's browser picks each location and sends it to the guest. Both browsers compute every round result from the same two guesses, so they always agree. See `js/duel.js`.
+
 ## Run locally
 
 It's a static site, but ES modules need a web server:
@@ -54,6 +59,7 @@ js/app.js          game flow, photo mode, daily challenge, challenge links, maps
 js/street.js       street view: Mapillary + Panoramax search, 360° viewer, walking, compass
 js/config.js       Mapillary token, Supabase project URL + public key
 js/leaderboard.js  daily leaderboard (Supabase REST API)
+js/duel.js         live duels (Supabase Realtime)
 supabase/schema.sql  leaderboard table and access rules
 js/seeds.js        regions (label, map view, score scale, areas) and seed points
 data/coverage.json Panoramax spots with 360° coverage
@@ -64,7 +70,8 @@ sw.js, manifest.webmanifest, icons/   make the game installable as an app
 
 ## Ideas for later
 
-- Live multiplayer duels (Supabase Realtime, on the same free project)
+- Public matchmaking for duels (play a random opponent)
+- Private leagues and weekly leaderboards
 
 ## Credits
 

@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/core@5.15.1/index.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/markers-plugin@5.15.1/index.css">
-  <link rel="stylesheet" href="style.css?v=9">
+  <link rel="stylesheet" href="style.css?v=10">
 </head>
 <body>
 
@@ -36,6 +36,16 @@
           <button type="button" class="btn btn-primary" id="dailyBtn">Play today's challenge</button>
         </div>
         <div class="daily-board" id="dailyBoard" hidden></div>
+      </section>
+
+      <section class="daily duel-card" id="duelCard" hidden aria-labelledby="duelTitle">
+        <div class="daily-text">
+          <h2 id="duelTitle">Live duel</h2>
+          <p>Play a friend in real time. You both see the same street. The closer guess takes health from the other player.</p>
+        </div>
+        <div class="daily-actions">
+          <button type="button" class="btn btn-primary" id="duelCreate">Create a duel</button>
+        </div>
       </section>
 
       <section class="challenge" id="challenge" hidden aria-labelledby="challengeTitle">
@@ -100,6 +110,46 @@
     </footer>
   </main>
 
+  <!-- DUEL LOBBY -->
+  <main id="lobby" class="screen start lobby" hidden>
+    <div class="start-inner">
+      <h1 class="lobby-title" id="lobbyTitle">Duel a friend</h1>
+      <div class="lobby-share" id="lobbyShare" hidden>
+        <p>Send this link to your friend. The duel starts when they've joined.</p>
+        <div class="lb-row">
+          <input id="lobbyLink" readonly aria-label="Duel link">
+          <button class="btn btn-primary" id="lobbyCopy" type="button">Copy link</button>
+        </div>
+        <p class="lobby-code">Duel code <strong id="lobbyCode">······</strong></p>
+      </div>
+      <form id="lobbyForm" class="setup" onsubmit="return false">
+        <fieldset>
+          <legend><label for="lobbyName">Your name</label></legend>
+          <div class="lb-row"><input id="lobbyName" maxlength="20" autocomplete="nickname" placeholder="Your name"></div>
+        </fieldset>
+        <div id="lobbyHost" hidden>
+          <fieldset>
+            <legend>Where to play</legend>
+            <div class="chips" id="duelRegionChips"></div>
+          </fieldset>
+          <fieldset>
+            <legend>Movement</legend>
+            <div class="chips">
+              <label class="chip"><input type="radio" name="duelMove" value="move" checked><span>Move</span></label>
+              <label class="chip"><input type="radio" name="duelMove" value="nomove"><span>No moving</span></label>
+              <label class="chip"><input type="radio" name="duelMove" value="nmpz"><span>No moving, panning or zooming</span></label>
+            </div>
+          </fieldset>
+        </div>
+      </form>
+      <p class="lobby-status" id="lobbyStatus" role="status"></p>
+      <div class="start-actions">
+        <button class="btn btn-primary btn-big" id="lobbyStart" type="button" disabled>Start duel</button>
+        <button class="btn btn-outline" id="lobbyLeave" type="button">Leave</button>
+      </div>
+    </div>
+  </main>
+
   <!-- GAME -->
   <div id="game" class="screen game" hidden>
     <header class="hud">
@@ -109,6 +159,7 @@
           <span class="compass-rose" id="compassRose"><span class="compass-n">N</span></span>
         </button>
       </div>
+      <div class="hud-duel" id="hudDuel"></div>
       <div class="hud-stats">
         <div class="hud-stat"><span class="hud-k" id="hudRoundLabel">Round</span><span class="hud-v" id="hudRound">1/5</span></div>
         <div class="hud-stat" id="hudScoreWrap"><span class="hud-k">Score</span><span class="hud-v" id="hudScore">0</span></div>
@@ -125,6 +176,8 @@
         <button class="btn btn-ghost" id="returnBtn" type="button">Back to start</button>
       </div>
       <div class="stage-credit" id="stageCredit"></div>
+      <div class="duel-wait" id="duelWait" hidden><p id="duelWaitText"></p></div>
+      <div class="duel-toast" id="duelToast" role="status" hidden></div>
 
       <div class="loading" id="loading">
         <div class="loading-pin" aria-hidden="true"></div>
@@ -153,6 +206,6 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-  <script type="module" src="js/app.js?v=9"></script>
+  <script type="module" src="js/app.js?v=10"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 // Daily challenge leaderboard, stored in Supabase (table public.daily_scores).
 // Talks to Supabase's REST API directly; no client library needed.
 
-import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=9';
+import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=10';
 
 export const hasLeaderboard = () => !!(SUPABASE_URL && SUPABASE_KEY);
 const API = `${SUPABASE_URL}/rest/v1/daily_scores`;
