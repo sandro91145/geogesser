@@ -1,4 +1,4 @@
-import { REGIONS } from './seeds.js?v=4';
+import { REGIONS } from './seeds.js?v=5';
 
 const ROUNDS = 5;
 const MAX_POINTS = 5000;
@@ -90,6 +90,9 @@ function htmlToText(html, max = 200) {
   return text.length > max ? text.slice(0, max - 1).trimEnd() + '…' : text;
 }
 
+// Commons sometimes stores the author as just "Self" or "Own work".
+const cleanArtist = (a) => (!a || /^(self|own work|unknown|anonymous)$/i.test(a) ? 'a Wikimedia Commons contributor' : a);
+
 // Move a point a random distance (up to maxKm) in a random direction.
 function jitter([lat, lng], maxKm) {
   const d = Math.sqrt(Math.random()) * maxKm;
@@ -174,7 +177,7 @@ async function findLive() {
             lat: pl.lat, lng: pl.lng,
             src,
             page: (ii.descriptionurl || commonsPage(pl.file)).replace(/\?.*$/, ''),
-            artist: htmlToText(md.Artist?.value, 80) || 'Unknown author',
+            artist: cleanArtist(htmlToText(md.Artist?.value, 80)),
             license: htmlToText(md.LicenseShortName?.value, 40),
             desc: htmlToText(md.ImageDescription?.value),
           };
@@ -197,7 +200,7 @@ async function findFallback() {
     const src = commonsThumb(e.t);
     try {
       await preloadImage(src);
-      return { title: e.t, name: e.n || niceTitle(e.t), lat: e.la, lng: e.lo, src, page: commonsPage(e.t), artist: e.a || 'Unknown author', license: e.l || '', desc: '' };
+      return { title: e.t, name: e.n || niceTitle(e.t), lat: e.la, lng: e.lo, src, page: commonsPage(e.t), artist: cleanArtist(e.a), license: e.l || '', desc: '' };
     } catch { /* next */ }
   }
   throw new Error('Photos failed to load');
