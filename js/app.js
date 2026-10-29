@@ -1,8 +1,9 @@
-import { REGIONS } from './seeds.js?v=10';
-import { StreetViewer, findPano, panoFromSpec, panoSpec, panoramaxCandidates, preloadPano, hasMapillary } from './street.js?v=10';
-import { hasLeaderboard, topScores, rankOf, submitScore, savedName, submittedToday } from './leaderboard.js?v=10';
-import { initDuel, hasDuels } from './duel.js?v=10';
-let duel = null;
+import { REGIONS } from './seeds.js?v=11';
+import { StreetViewer, findPano, panoFromSpec, panoSpec, panoramaxCandidates, preloadPano, hasMapillary } from './street.js?v=11';
+import { hasLeaderboard, topScores, rankOf, submitScore, savedName, submittedToday } from './leaderboard.js?v=11';
+import { initDuel, hasDuels } from './duel.js?v=11';
+import { initParty, hasParty } from './party.js?v=11';
+let duel = null, party = null;
 
 const ROUNDS = 5;
 const MAX_POINTS = 5000;
@@ -395,6 +396,7 @@ function renderRegions() {
   ).join('');
   $('regionChips').innerHTML = chips('region');
   $('duelRegionChips').innerHTML = chips('duelRegion');
+  $('partyRegionChips').innerHTML = chips('partyRegion');
 }
 
 function readForm() {
@@ -501,9 +503,12 @@ function renderChallenge() {
 function showStart() {
   stopTimer();
   if (state.kind === 'duel') { duel?.onExit(); state.kind = 'custom'; }
+  if (state.kind === 'party') { party?.onExit(); state.kind = 'custom'; }
   $('lobby').hidden = true;
-  $('game').classList.remove('is-duel');
+  $('partyLobby').hidden = true;
+  $('game').classList.remove('is-duel', 'is-party');
   $('duelCard').hidden = !hasDuels();
+  $('partyCard').hidden = !hasParty();
   state.gameId++;
   state.prefetch = null;
   state.phase = 'idle';
@@ -646,6 +651,7 @@ function stopTimer() { clearInterval(state.timerId); state.timerId = null; }
 function submitGuess(timedOut = false) {
   if (state.phase !== 'guessing') return;
   if (state.kind === 'duel') return duel.submit();
+  if (state.kind === 'party') return party.submit();
   if (state.game === 'streak') return submitStreakGuess(timedOut);
   stopTimer();
   state.phase = 'result';
@@ -958,6 +964,7 @@ $('retryBtn').addEventListener('click', () => { state.prefetch = null; nextRound
 $('switchBtn').addEventListener('click', () => { state.mode = 'photo'; state.prefetch = null; nextRound(); });
 $('quitBtn').addEventListener('click', () => {
   if (state.kind === 'duel') { if (confirm('Leave the duel?')) showStart(); return; }
+  if (state.kind === 'party') { if (confirm('Leave the game?')) showStart(); return; }
   if (state.phase === 'summary' || confirm('Leave this game? Your score so far will be lost.')) showStart();
 });
 $('stageImg').addEventListener('click', toggleZoom);
@@ -1002,8 +1009,18 @@ duel = initDuel({
   resultMap: () => resultMap, resultLayer: () => resultLayer,
 });
 $('duelCreate').addEventListener('click', () => duel.create());
+party = initParty({
+  $, state, REGIONS, baseUrl, savedName, stopTimer, escapeHTML, showStart, copyText,
+  ensureMaps: () => { if (!guessMap) initMaps(); },
+  findPano, specOf, locFromSpec, showLocation, showLoading, hideLoading, resetGuessMap,
+  scoreFor, haversine, makePin, nearCopy, fmt, fmtKm, placeName, cardPadding,
+  resultMap: () => resultMap, resultLayer: () => resultLayer,
+});
+$('partyCreate').addEventListener('click', () => party.create());
 
 showStart();
 if (state.challenge) $('challengeBtn').focus({ preventScroll: true });
 const duelCode = location.hash.match(/#duel=([A-Z0-9]{6})/i)?.[1];
 if (duelCode && hasDuels()) duel.join(duelCode.toUpperCase());
+const partyCode = location.hash.match(/#party=([A-Z0-9]{6})/i)?.[1];
+if (partyCode && hasParty()) party.join(partyCode.toUpperCase());

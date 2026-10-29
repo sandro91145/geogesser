@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/core@5.15.1/index.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/markers-plugin@5.15.1/index.css">
-  <link rel="stylesheet" href="style.css?v=10">
+  <link rel="stylesheet" href="style.css?v=11">
 </head>
 <body>
 
@@ -45,6 +45,16 @@
         </div>
         <div class="daily-actions">
           <button type="button" class="btn btn-primary" id="duelCreate">Create a duel</button>
+        </div>
+      </section>
+
+      <section class="daily party-card" id="partyCard" hidden aria-labelledby="partyCardTitle">
+        <div class="daily-text">
+          <h2 id="partyCardTitle">Party game</h2>
+          <p>Up to 5 players, live. Everyone gets the same 5 places, and the highest total score wins.</p>
+        </div>
+        <div class="daily-actions">
+          <button type="button" class="btn btn-primary" id="partyCreate">Create a game</button>
         </div>
       </section>
 
@@ -150,6 +160,48 @@
     </div>
   </main>
 
+  <!-- PARTY LOBBY -->
+  <main id="partyLobby" class="screen start lobby" hidden>
+    <div class="start-inner">
+      <h1 class="lobby-title" id="partyTitle">Party game</h1>
+      <div class="lobby-share" id="partyShare" hidden>
+        <p>Send this link to up to 4 friends.</p>
+        <div class="lb-row">
+          <input id="partyLink" readonly aria-label="Game link">
+          <button class="btn btn-primary" id="partyCopy" type="button">Copy link</button>
+        </div>
+        <p class="lobby-code">Game code <strong id="partyCode">······</strong></p>
+      </div>
+      <h2 class="setup-title">Players</h2>
+      <ol class="party-players" id="partyPlayers"></ol>
+      <form id="partyForm" class="setup" onsubmit="return false">
+        <fieldset>
+          <legend><label for="partyName">Your name</label></legend>
+          <div class="lb-row"><input id="partyName" maxlength="20" autocomplete="nickname" placeholder="Your name"></div>
+        </fieldset>
+        <div id="partyHost" hidden>
+          <fieldset>
+            <legend>Where to play</legend>
+            <div class="chips" id="partyRegionChips"></div>
+          </fieldset>
+          <fieldset>
+            <legend>Movement</legend>
+            <div class="chips">
+              <label class="chip"><input type="radio" name="partyMove" value="move" checked><span>Move</span></label>
+              <label class="chip"><input type="radio" name="partyMove" value="nomove"><span>No moving</span></label>
+              <label class="chip"><input type="radio" name="partyMove" value="nmpz"><span>No moving, panning or zooming</span></label>
+            </div>
+          </fieldset>
+        </div>
+      </form>
+      <p class="lobby-status" id="partyStatus" role="status"></p>
+      <div class="start-actions">
+        <button class="btn btn-primary btn-big" id="partyStart" type="button" disabled>Start game</button>
+        <button class="btn btn-outline" id="partyLeaveLobby" type="button">Leave</button>
+      </div>
+    </div>
+  </main>
+
   <!-- GAME -->
   <div id="game" class="screen game" hidden>
     <header class="hud">
@@ -206,6 +258,6 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-  <script type="module" src="js/app.js?v=10"></script>
+  <script type="module" src="js/app.js?v=11"></script>
 </body>
 </html>

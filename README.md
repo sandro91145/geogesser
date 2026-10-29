@@ -12,6 +12,7 @@ You're dropped onto a random street somewhere on Earth. Look around in 360°, wa
 - **Movement options** like GeoGuessr: Move, No moving, or No moving, panning or zooming
 - **Daily challenge**: the same five places for everyone each day, with a leaderboard and a shareable 🟩🟨🟧 result
 - **Live duels**: send a friend a link and play in real time. Same street for both; once one player guesses, the other has 15 seconds; the lower score loses the difference in health (6,000 each, damage multiplier grows from round 5)
+- **Party game**: up to 5 players live. Everyone gets the same 5 street views; once someone guesses, the others have 20 seconds; highest total wins
 - **Challenge a friend**: copies a link that replays your exact five rounds and shows your score to beat
 - **Country streak**: click the country you think you're in; how many in a row can you get?
 - **Photos mode**: real photos of places from Wikimedia Commons
@@ -41,6 +42,8 @@ The daily leaderboard is stored in a free [Supabase](https://supabase.com) proje
 
 Duels use [Supabase Realtime](https://supabase.com/docs/guides/realtime) broadcast on the same project, with no database tables. Each duel is a channel named after its 6-letter code. The host's browser picks each location and sends it to the guest. Both browsers compute every round result from the same two guesses, so they always agree. See `js/duel.js`.
 
+The **party game** (`js/party.js`) works the same way for up to 5 players. The host also keeps the player list and closes each round, then sends everyone the final set of guesses, so all scoreboards match.
+
 ## Run locally
 
 It's a static site, but ES modules need a web server:
@@ -60,6 +63,7 @@ js/street.js       street view: Mapillary + Panoramax search, 360° viewer, walk
 js/config.js       Mapillary token, Supabase project URL + public key
 js/leaderboard.js  daily leaderboard (Supabase REST API)
 js/duel.js         live duels (Supabase Realtime)
+js/party.js        live party game for up to 5 players (Supabase Realtime)
 supabase/schema.sql  leaderboard table and access rules
 js/seeds.js        regions (label, map view, score scale, areas) and seed points
 data/coverage.json Panoramax spots with 360° coverage

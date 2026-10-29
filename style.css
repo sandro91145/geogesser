@@ -463,3 +463,23 @@ button { font: inherit; }
 }
 
 .is-duel .stage-hint { display: none; }
+
+/* ---------- party game ---------- */
+.party-card { background: #3B2F5C; }
+.party-players { list-style: none; margin: 0 0 2rem; padding: 0; display: grid; gap: .4rem; max-width: 26rem; }
+.party-players li { display: flex; align-items: center; gap: .6rem; background: var(--paper); border-radius: 12px; padding: .6rem .9rem; font-weight: 600; box-shadow: inset 0 0 0 1.5px rgba(60, 78, 102, .15); }
+.party-players li.empty { background: transparent; color: var(--ink-soft); font-weight: 400; box-shadow: inset 0 0 0 1.5px rgba(60, 78, 102, .18); border: 0; }
+.party-players em, .party-standings em, .party-podium em { font-style: normal; font-weight: 400; opacity: .65; font-size: .85em; }
+.party-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; flex: none; box-shadow: 0 0 0 2px rgba(255,255,255,.6); }
+.is-party .hud-duel { min-width: 240px; }
+.party-hud { display: flex; justify-content: space-between; gap: 1rem; font-size: .9rem; }
+.party-list li { grid-template-columns: 14px 1fr auto; }
+.party-list li::before { content: none; }
+.party-list li.me, .party-standings li.me, .party-podium li.me { background: rgba(242, 183, 5, .18); border-radius: 8px; }
+.party-standings { margin: .8rem 0 .6rem; }
+.party-standings-title { margin: 0 0 .3rem; font-weight: 700; font-size: .9rem; color: var(--ink-soft); }
+.party-standings ol, .party-podium { list-style: none; margin: 0; padding: 0; }
+.party-standings li, .party-podium li { display: grid; grid-template-columns: 1.6rem 14px 1fr auto; gap: .55rem; align-items: center; padding: .35rem .5rem; font-size: .95rem; }
+.party-podium li { font-size: 1.05rem; padding: .5rem; }
+.party-place { font-size: 1.3rem; text-align: center; }
+.party-winner { font-size: clamp(2.4rem, 8vw, 3.6rem); margin-bottom: .6rem; }

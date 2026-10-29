@@ -13,7 +13,7 @@
 //
 // Messages: { t: 'hello' | 'start' | 'round' | 'ready' | 'go' | 'guess' | 'next' | 'ping' | 'bye', ... }
 
-import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=10';
+import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=11';
 
 const START_HP = 6000;
 const AFTER_FIRST_GUESS = 15;   // seconds the other player gets
