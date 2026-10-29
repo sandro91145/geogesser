@@ -1,5 +1,6 @@
-import { REGIONS } from './seeds.js?v=8';
-import { StreetViewer, findPano, panoFromSpec, panoSpec, panoramaxCandidates, preloadPano, hasMapillary } from './street.js?v=8';
+import { REGIONS } from './seeds.js?v=9';
+import { StreetViewer, findPano, panoFromSpec, panoSpec, panoramaxCandidates, preloadPano, hasMapillary } from './street.js?v=9';
+import { hasLeaderboard, topScores, rankOf, submitScore, savedName, submittedToday } from './leaderboard.js?v=9';
 
 const ROUNDS = 5;
 const MAX_POINTS = 5000;
@@ -411,6 +412,56 @@ function renderSetup() {
     : (best ? `Your best with these settings: <strong>${fmt(best)}</strong>` : `No score yet for ${where} with these settings.`);
 }
 
+/* ---------------- daily leaderboard ---------------- */
+async function renderBoard(el, day, { limit = 10, highlight = null } = {}) {
+  if (!el || !hasLeaderboard()) return;
+  el.innerHTML = '<p class="lb-note">Loading today\'s scores…</p>';
+  try {
+    const rows = await topScores(day, limit);
+    if (!rows.length) { el.innerHTML = '<p class="lb-note">No scores yet today. Be the first.</p>'; return; }
+    const mine = highlight || submittedToday(day);
+    let marked = false;
+    el.innerHTML = `<ol class="lb-list">${rows.map((r, i) => {
+      const me = !marked && mine && r.name === mine.name && r.score === mine.score && (marked = true);
+      return `<li class="${me ? 'me' : ''}"><span class="lb-rank">${i + 1}</span><span class="lb-name">${escapeHTML(r.name)}${me ? ' <em>(you)</em>' : ''}</span><span class="lb-blocks" aria-hidden="true">${blocks(r.points || [])}</span><span class="lb-score">${fmt(r.score)}</span></li>`;
+    }).join('')}</ol>`;
+    if (mine && !marked) {
+      const { rank, total } = await rankOf(day, mine.score);
+      el.insertAdjacentHTML('beforeend', `<p class="lb-note">You're #${rank} of ${total} today with ${fmt(mine.score)}.</p>`);
+    }
+  } catch {
+    el.innerHTML = '<p class="lb-note">The leaderboard is unavailable right now.</p>';
+  }
+}
+
+// Name form for adding today's official score. `onDone` runs after saving.
+function renderSubmit(el, entry, onDone) {
+  if (!el || !hasLeaderboard()) return;
+  if (submittedToday(entry.date)) { onDone?.(); return; }
+  el.innerHTML = `
+    <form class="lb-form" id="lbForm">
+      <label for="lbName">Add your score to today's leaderboard</label>
+      <div class="lb-row">
+        <input id="lbName" name="name" maxlength="20" autocomplete="nickname" placeholder="Your name" value="${escapeHTML(savedName())}" required>
+        <button class="btn btn-primary" type="submit" id="lbSubmit">Add score</button>
+      </div>
+      <p class="lb-msg" id="lbMsg" role="status"></p>
+    </form>`;
+  $('lbForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = $('lbSubmit'), msg = $('lbMsg');
+    btn.disabled = true; btn.textContent = 'Adding…'; msg.textContent = '';
+    try {
+      const res = await submitScore({ day: entry.date, name: $('lbName').value, score: entry.total, points: entry.points });
+      el.innerHTML = `<p class="lb-note">${res === 'duplicate' ? 'Your score for today was already on the leaderboard.' : 'Added. Here\'s how you compare:'}</p>`;
+      onDone?.();
+    } catch (err) {
+      btn.disabled = false; btn.textContent = 'Add score';
+      msg.textContent = err.message === 'Enter a name' ? 'Enter a name first.' : "Couldn't add your score. Check your connection and try again.";
+    }
+  });
+}
+
 function renderDaily() {
   const date = todayUTC();
   const done = store.get(`onde.daily.${date}`);
@@ -427,6 +478,12 @@ function renderDaily() {
     $('dailyActions').innerHTML = `<button type="button" class="btn btn-primary" id="dailyBtn">Play today's challenge</button>`;
     $('dailyBtn').addEventListener('click', () => startDaily());
   }
+  const box = $('dailyBoard');
+  box.hidden = !hasLeaderboard();
+  if (!hasLeaderboard()) return;
+  box.innerHTML = '<h3>Today\'s top scores</h3><div id="dailySubmit"></div><div id="dailyList"></div>';
+  const list = () => renderBoard($('dailyList'), date, { limit: 5 });
+  if (done && done.points) renderSubmit($('dailySubmit'), done, list); else list();
 }
 
 function renderChallenge() {
@@ -719,6 +776,7 @@ function showSummary() {
     <p class="sum-total">${fmt(state.total)} <span>/ ${fmt(MAX_POINTS * ROUNDS)}</span></p>
     <p class="sum-sub">${escapeHTML(sub)}</p>
     <ol class="sum-list">${rows}</ol>
+    ${state.kind === 'daily' && hasLeaderboard() ? '<section class="lb" aria-label="Today\'s leaderboard"><div id="sumSubmit"></div><div id="sumBoard"></div></section>' : ''}
     <div class="r-actions">
       <button class="btn btn-outline" id="copyBtn">Copy result</button>
       <button class="btn btn-outline" id="linkBtn">Challenge a friend</button>
@@ -743,6 +801,15 @@ function showSummary() {
     copyText(text, e.currentTarget, 'Copy result');
   });
   ($('againBtn') || $('linkBtn')).focus({ preventScroll: true });
+
+  if (state.kind === 'daily' && hasLeaderboard()) {
+    const official = store.get(`onde.daily.${state.dailyDate}`);
+    const board = () => renderBoard($('sumBoard'), state.dailyDate);
+    if (official && official.total === state.total && !submittedToday(state.dailyDate)) {
+      renderSubmit($('sumSubmit'), official, board);
+      $('lbName')?.focus({ preventScroll: true });
+    } else board();
+  }
 }
 
 /* ---------------- country streak ---------------- */

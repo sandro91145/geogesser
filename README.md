@@ -10,7 +10,7 @@ You're dropped onto a random street somewhere on Earth. Look around in 360°, wa
 
 - **Street view (360°)** from [Mapillary](https://www.mapillary.com) and [Panoramax](https://panoramax.fr), with clickable arrows and ↑/↓ (or W/S) to walk, a compass (click it to face north) and "Back to start"
 - **Movement options** like GeoGuessr: Move, No moving, or No moving, panning or zooming
-- **Daily challenge**: the same five places for everyone each day, with a shareable 🟩🟨🟧 result
+- **Daily challenge**: the same five places for everyone each day, with a leaderboard and a shareable 🟩🟨🟧 result
 - **Challenge a friend**: copies a link that replays your exact five rounds and shows your score to beat
 - **Country streak**: click the country you think you're in; how many in a row can you get?
 - **Photos mode**: real photos of places from Wikimedia Commons
@@ -32,6 +32,10 @@ You're dropped onto a random street somewhere on Earth. Look around in 360°, wa
 
 `js/config.js` holds the Mapillary client token. It's read-only and meant for use in web pages. To use your own, create one at https://www.mapillary.com/dashboard/developers. If it's empty, street view uses Panoramax only.
 
+## Leaderboard
+
+The daily leaderboard is stored in a free [Supabase](https://supabase.com) project (`SUPABASE_URL` / `SUPABASE_KEY` in `js/config.js`). The table and its access rules are in `supabase/schema.sql`. The public key can only read scores and add one score per player per day for today, and the total must match the five round scores. Nothing can be edited or deleted from the game. Scores are submitted by the browser, so this can't fully prevent a determined cheater. That's fine for a friends leaderboard.
+
 ## Run locally
 
 It's a static site, but ES modules need a web server:
@@ -48,7 +52,9 @@ index.html         screens: start, game, result
 style.css          all styling
 js/app.js          game flow, photo mode, daily challenge, challenge links, maps, scoring
 js/street.js       street view: Mapillary + Panoramax search, 360° viewer, walking, compass
-js/config.js       Mapillary token
+js/config.js       Mapillary token, Supabase project URL + public key
+js/leaderboard.js  daily leaderboard (Supabase REST API)
+supabase/schema.sql  leaderboard table and access rules
 js/seeds.js        regions (label, map view, score scale, areas) and seed points
 data/coverage.json Panoramax spots with 360° coverage
 data/fallback.json built-in photos used when the photo search is unavailable
@@ -58,8 +64,7 @@ sw.js, manifest.webmanifest, icons/   make the game installable as an app
 
 ## Ideas for later
 
-- Daily leaderboard (needs a small free database, e.g. Supabase)
-- Live multiplayer duels (needs a small server, e.g. a free Supabase or Firebase tier)
+- Live multiplayer duels (Supabase Realtime, on the same free project)
 
 ## Credits
 
