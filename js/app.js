@@ -2,12 +2,9 @@ import { REGIONS } from './seeds.js';
 
 const ROUNDS = 5;
 const MAX_POINTS = 5000;
-const API = 'https://commons.wikimedia.org/w/api.php';
+
 const TILE_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
 const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
-
-// File names that usually mean "not a photo of a place".
-const BAD_TITLE = /\b(map|maps|karte|carte|mapa|plan|lageplan|logo|flag|coat of arms|wappen|bras[aã]o|escudo|diagram|chart|scan|document|signature|stamp|coin|banknote|poster|book|page|letter|manuscript|screenshot|satellite|portrait|painting|museum|exhibit|artefact|artifact|fossil|specimen|herbarium|inscription|plaque|grave|tomb|interior|x-ray|microscop)\b/i;
 
 const $ = (id) => document.getElementById(id);
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -21,7 +18,6 @@ const state = {
   current: null,         // location for this round
   guess: null,           // L.LatLng
   usedTitles: new Set(),
-  usedSeeds: new Set(),
   prefetch: null,        // Promise<location>
   timerId: null,
   deadline: 0,
@@ -50,24 +46,10 @@ function haversine(a, b) {
 }
 const scoreFor = (km, scale) => (km < 0.05 ? MAX_POINTS : Math.round(MAX_POINTS * Math.exp(-km / scale)));
 const shuffle = (arr) => { for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; } return arr; };
-function htmlToText(html, max = 240) {
-  if (!html) return '';
-  const text = new DOMParser().parseFromString(html, 'text/html').body.textContent.replace(/\s+/g, ' ').trim();
-  return text.length > max ? text.slice(0, max - 1).trimEnd() + '…' : text;
-}
 function niceTitle(title) {
   return title.replace(/^File:/, '').replace(/\.[a-z0-9]+$/i, '').replace(/_/g, ' ').trim();
 }
 const looksLikeCameraName = (t) => /^(img|dsc|dscf|dscn|pxl|p\d|photo|image|cimg|sam|gopr|dji)[\s_-]?\d/i.test(t) || /^\d[\d\s_-]*$/.test(t);
-
-// Move a point a random distance (up to maxKm) in a random direction.
-function jitter([lat, lng], maxKm) {
-  const d = Math.sqrt(Math.random()) * maxKm;
-  const theta = Math.random() * 2 * Math.PI;
-  const dLat = (d * Math.cos(theta)) / 111;
-  const dLng = (d * Math.sin(theta)) / (111 * Math.max(0.2, Math.cos(lat * Math.PI / 180)));
-  return [Math.max(-85, Math.min(85, lat + dLat)), ((lng + dLng + 540) % 360) - 180];
-}
 
 async function fetchJSON(url, ms = 9000) {
   const ctl = new AbortController();
@@ -90,64 +72,142 @@ function preloadImage(src) {
 }
 
 /* ---------------- finding a location ---------------- */
-async function searchNear([lat, lng]) {
-  const p = new URLSearchParams({
-    action: 'query', format: 'json', formatversion: '2', origin: '*',
-    generator: 'geosearch', ggscoord: `${lat.toFixed(5)}|${lng.toFixed(5)}`, ggsradius: '10000', ggslimit: '50', ggsnamespace: '6',
-    prop: 'imageinfo|coordinates', colimit: 'max',
-    iiprop: 'url|size|mime|extmetadata', iiurlwidth: '1280',
-    iiextmetadatafilter: 'Artist|LicenseShortName|ImageDescription',
-  });
-  const data = await fetchJSON(`${API}?${p}`);
-  const pages = data?.query?.pages || [];
-  return pages.filter((pg) => {
-    const ii = pg.imageinfo?.[0];
-    const co = pg.coordinates?.[0];
-    if (!ii || !co || !ii.thumburl) return false;
-    if (ii.mime !== 'image/jpeg') return false;
-    if (ii.width < 1000 || ii.height < 600) return false;
-    const ratio = ii.width / ii.height;
-    if (ratio < 0.6 || ratio > 2.7) return false;
-    if (BAD_TITLE.test(niceTitle(pg.title))) return false;
-    if (state.usedTitles.has(pg.title)) return false;
-    return true;
-  }).map((pg) => {
-    const ii = pg.imageinfo[0], md = ii.extmetadata || {};
-    const name = niceTitle(pg.title);
-    return {
-      title: pg.title,
-      name,
-      lat: pg.coordinates[0].lat,
-      lng: pg.coordinates[0].lon,
-      src: ii.thumburl,
-      page: ii.descriptionurl,
-      artist: htmlToText(md.Artist?.value, 80) || 'Unknown author',
-      license: htmlToText(md.LicenseShortName?.value, 40),
-      desc: htmlToText(md.ImageDescription?.value),
-    };
-  });
+// Each round: pick a seed point in the region, nudge it, ask Wikidata for places
+// with a photo nearby (fast, ~0.5 s), then get size + credits for those photos
+// from Wikimedia Commons. If that fails, fall back to data/fallback.json.
+const SPARQL = 'https://query.wikidata.org/sparql';
+const COMMONS = 'https://commons.wikimedia.org/w/api.php';
+
+// File names that usually mean "not a photo of a place".
+const BAD_FILE = /\b(map|maps|karte|carte|mapa|plan|lageplan|logo|flag|bandeira|bandera|drapeau|coat of arms|wappen|bras[aã]o|escudo|blason|seal|emblem|diagram|chart|scan|document|signature|stamp|coin|banknote|poster|book|page|letter|manuscript|screenshot|satellite|portrait|painting|museum|exhibit|artefact|artifact|fossil|specimen|herbarium|inscription|plaque|grave|tomb|x-ray|microscop|aerial|a[eé]rea|from the air|from space|view of earth|iss\d+|flight|voo|vuelo|airplane|aircraft window|selfie|location|locator)\b/i;
+
+const commonsPage = (file) => `https://commons.wikimedia.org/wiki/File:${encodeURIComponent(file.replace(/ /g, '_'))}`;
+const commonsThumb = (file) => `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(file.replace(/ /g, '_'))}?width=1280`;
+
+function htmlToText(html, max = 200) {
+  if (!html) return '';
+  const text = new DOMParser().parseFromString(html, 'text/html').body.textContent.replace(/\s+/g, ' ').trim();
+  return text.length > max ? text.slice(0, max - 1).trimEnd() + '…' : text;
 }
 
-async function findLocation() {
+// Move a point a random distance (up to maxKm) in a random direction.
+function jitter([lat, lng], maxKm) {
+  const d = Math.sqrt(Math.random()) * maxKm;
+  const theta = Math.random() * 2 * Math.PI;
+  const dLat = (d * Math.cos(theta)) / 111;
+  const dLng = (d * Math.sin(theta)) / (111 * Math.max(0.2, Math.cos(lat * Math.PI / 180)));
+  return [Math.max(-85, Math.min(85, lat + dLat)), ((lng + dLng + 540) % 360) - 180];
+}
+
+const SEEN_KEY = 'onde.seen';
+const seenTitles = () => new Set(store.get(SEEN_KEY) || []);
+function rememberSeen(title) {
+  const seen = store.get(SEEN_KEY) || [];
+  seen.push(title);
+  store.set(SEEN_KEY, seen.slice(-500));
+}
+
+async function placesNear([lat, lng], radiusKm) {
+  const query = `SELECT ?loc ?image ?lbl WHERE {
+    SERVICE wikibase:around { ?item wdt:P625 ?loc . bd:serviceParam wikibase:center "Point(${lng.toFixed(4)} ${lat.toFixed(4)})"^^geo:wktLiteral . bd:serviceParam wikibase:radius "${radiusKm}" . }
+    ?item wdt:P18 ?image .
+    OPTIONAL { ?item rdfs:label ?lbl FILTER(lang(?lbl) = "en") }
+  } LIMIT 120`;
+  const data = await fetchJSON(`${SPARQL}?format=json&query=${encodeURIComponent(query)}`, 8000);
+  return (data?.results?.bindings || []).map((b) => {
+    const m = b.loc.value.match(/Point\(([-\d.eE]+) ([-\d.eE]+)\)/);
+    if (!m) return null;
+    return {
+      file: decodeURIComponent(b.image.value.split('/').pop()).replace(/_/g, ' '),
+      lat: +m[2], lng: +m[1],
+      label: b.lbl?.value || '',
+    };
+  }).filter(Boolean);
+}
+
+async function fileInfo(files) {
+  const p = new URLSearchParams({
+    action: 'query', format: 'json', formatversion: '2', origin: '*',
+    titles: files.map((f) => 'File:' + f).join('|'),
+    prop: 'imageinfo', iiprop: 'url|size|mime|extmetadata', iiurlwidth: '1280',
+    iiextmetadatafilter: 'Artist|LicenseShortName|ImageDescription',
+  });
+  const data = await fetchJSON(`${COMMONS}?${p}`, 8000);
+  const byFile = new Map();
+  for (const pg of data?.query?.pages || []) if (pg.imageinfo) byFile.set(pg.title.replace(/^File:/, ''), pg.imageinfo[0]);
+  // Commons may normalise titles; map those back to what we asked for.
+  for (const n of data?.query?.normalized || []) {
+    const ii = byFile.get(n.to.replace(/^File:/, ''));
+    if (ii) byFile.set(n.from.replace(/^File:/, ''), ii);
+  }
+  return byFile;
+}
+
+const goodSize = (ii) => ii && ii.mime === 'image/jpeg' && ii.width >= 1000 && ii.height >= 600 && ii.width / ii.height >= 0.6 && ii.width / ii.height <= 2.7;
+
+async function findLive() {
   const region = REGIONS[state.regionKey];
-  const indices = shuffle(region.seeds.map((_, i) => i)).filter((i) => !state.usedSeeds.has(i));
-  let lastErr = null;
-  for (let attempt = 0; attempt < Math.min(10, indices.length); attempt++) {
-    const seedIdx = indices[attempt];
-    const point = jitter(region.seeds[seedIdx], region.jitter);
+  const seen = seenTitles();
+  let lastErr = new Error('No photos found');
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const seed = region.seeds[Math.floor(Math.random() * region.seeds.length)];
     try {
-      const candidates = shuffle(await searchNear(point));
-      for (const c of candidates.slice(0, 3)) {
+      const places = shuffle(await placesNear(jitter(seed, region.jitter), region.radius))
+        .filter((pl) => /\.jpe?g$/i.test(pl.file) && !BAD_FILE.test(pl.file) && !state.usedTitles.has(pl.file));
+      const fresh = places.filter((pl) => !seen.has(pl.file));
+      const pick = (fresh.length >= 3 ? fresh : places).slice(0, 12);
+      if (!pick.length) continue;
+      const info = await fileInfo(pick.map((pl) => pl.file));
+      let tries = 0;
+      for (const pl of pick) {
+        const ii = info.get(pl.file);
+        if (!goodSize(ii)) continue;
+        if (tries++ >= 2) break;
+        const src = (ii.thumburl || ii.url).replace(/\?.*$/, '');
         try {
-          await preloadImage(c.src);
-          state.usedSeeds.add(seedIdx);
-          state.usedTitles.add(c.title);
-          return c;
-        } catch { /* try next candidate */ }
+          await preloadImage(src);
+          const md = ii.extmetadata || {};
+          return {
+            title: pl.file,
+            name: pl.label || niceTitle(pl.file),
+            lat: pl.lat, lng: pl.lng,
+            src,
+            page: (ii.descriptionurl || commonsPage(pl.file)).replace(/\?.*$/, ''),
+            artist: htmlToText(md.Artist?.value, 80) || 'Unknown author',
+            license: htmlToText(md.LicenseShortName?.value, 40),
+            desc: htmlToText(md.ImageDescription?.value),
+          };
+        } catch { /* image failed — try the next one */ }
       }
     } catch (e) { lastErr = e; }
   }
-  throw lastErr || new Error('No photos found');
+  throw lastErr;
+}
+
+let fallbackPromise = null;
+async function findFallback() {
+  fallbackPromise ||= fetchJSON('data/fallback.json', 10000).catch((e) => { fallbackPromise = null; throw e; });
+  const pool = await fallbackPromise;
+  const list = state.regionKey === 'world' ? Object.values(pool).flat() : (pool[state.regionKey] || []);
+  const seen = seenTitles();
+  const avail = list.filter((e) => !state.usedTitles.has(e.t));
+  const fresh = avail.filter((e) => !seen.has(e.t));
+  for (const e of shuffle(fresh.length ? fresh : avail).slice(0, 4)) {
+    const src = commonsThumb(e.t);
+    try {
+      await preloadImage(src);
+      return { title: e.t, name: e.n || niceTitle(e.t), lat: e.la, lng: e.lo, src, page: commonsPage(e.t), artist: e.a || 'Unknown author', license: e.l || '', desc: '' };
+    } catch { /* next */ }
+  }
+  throw new Error('Photos failed to load');
+}
+
+async function findLocation() {
+  let loc;
+  try { loc = await findLive(); } catch (e) { console.warn('Live search failed, using built-in photos:', e); loc = await findFallback(); }
+  state.usedTitles.add(loc.title);
+  rememberSeen(loc.title);
+  return loc;
 }
 
 /* ---------------- maps ---------------- */
@@ -254,7 +314,6 @@ function startGame() {
   state.total = 0;
   state.results = [];
   state.usedTitles.clear();
-  state.usedSeeds.clear();
   state.prefetch = null;
 
   $('start').hidden = true;

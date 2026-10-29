@@ -1,5 +1,5 @@
-// Seed points the game searches around. Each round picks one, nudges it a
-// random distance away, then looks for a geotagged Commons photo nearby.
+// Seed points the game searches around. Each round picks one, nudges it up to
+// `jitter` km away, and asks Wikidata for photographed places within `radius` km.
 // Format: [lat, lng]
 
 const europe = [
@@ -88,11 +88,11 @@ const portugal = [
 ];
 
 export const REGIONS = {
-  world:    { label: 'World',    scale: 1492, view: [[-50, -150], [70, 170]], jitter: 30, seeds: [...europe, ...asia, ...africa, ...americas, ...oceania] },
-  europe:   { label: 'Europe',   scale: 650, view: [[35, -24], [70, 42]],    jitter: 25, seeds: europe },
-  americas: { label: 'Americas', scale: 1400, view: [[-55, -150], [65, -35]], jitter: 30, seeds: americas },
-  asia:     { label: 'Asia',     scale: 1000, view: [[-9, 26], [60, 145]],    jitter: 30, seeds: asia },
-  africa:   { label: 'Africa',   scale: 800,  view: [[-35, -25], [37, 56]],   jitter: 30, seeds: africa },
-  oceania:  { label: 'Oceania',  scale: 700,  view: [[-47, 112], [14, 205]],  jitter: 25, seeds: oceania },
-  portugal: { label: 'Portugal', scale: 150, view: [[32.4, -29], [42.2, -6.2]], jitter: 8, seeds: portugal },
+  world:    { label: 'World',    scale: 1492, view: [[-50, -150], [70, 170]], jitter: 25, radius: 20, seeds: [...europe, ...asia, ...africa, ...americas, ...oceania] },
+  europe:   { label: 'Europe',   scale: 650, view: [[35, -24], [70, 42]], jitter: 25, radius: 20, seeds: europe },
+  americas: { label: 'Americas', scale: 1400, view: [[-55, -150], [65, -35]], jitter: 25, radius: 20, seeds: americas },
+  asia:     { label: 'Asia',     scale: 1000, view: [[-9, 26], [60, 145]], jitter: 25, radius: 20, seeds: asia },
+  africa:   { label: 'Africa',   scale: 800,  view: [[-35, -25], [37, 56]], jitter: 25, radius: 20, seeds: africa },
+  oceania:  { label: 'Oceania',  scale: 700,  view: [[-47, 112], [14, 205]], jitter: 25, radius: 20, seeds: oceania },
+  portugal: { label: 'Portugal', scale: 150, view: [[32.4, -29], [42.2, -6.2]], jitter: 8, radius: 12, seeds: portugal },
 };

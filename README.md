@@ -18,7 +18,7 @@ Each game is five rounds. You get a real photo taken somewhere on Earth, drop a 
 
 ## How it works
 
-- **Photos** come from [Wikimedia Commons](https://commons.wikimedia.org). Each round picks a seed point in the chosen region (`js/seeds.js`), moves it a random distance away, and asks the Commons API for geotagged photos within 10 km. Maps, logos, scans, museum objects and similar files are filtered out by name.
+- **Photos** come from [Wikimedia Commons](https://commons.wikimedia.org). Each round picks a seed point in the chosen region (`js/seeds.js`), nudges it up to 25 km, and asks the [Wikidata Query Service](https://query.wikidata.org) for places with a photo nearby (about half a second). Size, author and license come from the Commons API. Maps, flags, scans, aerial shots and small or oddly shaped images are filtered out. The next round loads while you play the current one. If Wikidata can't be reached, the game uses ~110 built-in photos from `data/fallback.json`.
 - **Map** is [Leaflet](https://leafletjs.com) with OpenStreetMap data and CARTO Voyager tiles.
 - **Score** is `5000 × e^(−distance / scale)`, where the scale depends on the region size (1,492 km for the world, 150 km for Portugal).
 
@@ -34,10 +34,12 @@ python3 -m http.server 8000
 ## Project layout
 
 ```
-index.html      screens: start, game, result
-style.css       all styling
-js/app.js       game logic, Commons search, maps, scoring
-js/seeds.js     regions and the seed points used to look for photos
+index.html         screens: start, game, result
+style.css          all styling
+js/app.js          game logic, photo search, maps, scoring
+js/seeds.js        regions (label, map view, score scale) and the seed points searched
+data/fallback.json built-in photos used when the live search is unavailable
+tools/harvest.js   collects photos in bulk from Wikidata (to rebuild the fallback)
 ```
 
 ## Ideas for later
