@@ -32,10 +32,8 @@ async function harvest(seedsByRegion, { perSeed = 4, radiusKm = { portugal: 12 }
   async function placesNear([lat, lng], radius) {
     const q = `SELECT ?item ?loc ?image WHERE {
       SERVICE wikibase:around { ?item wdt:P625 ?loc . bd:serviceParam wikibase:center "Point(${lng} ${lat})"^^geo:wktLiteral . bd:serviceParam wikibase:radius "${radius}" . }
-      ?item wdt:P18 ?image .
-      MINUS { ?item wdt:P31 wd:Q3305213 }   # paintings
-      MINUS { ?item wdt:P31 wd:Q860861 }    # sculptures
-      MINUS { ?item wdt:P31 wd:Q5 }         # people
+      ?item wdt:P18 ?image ; wdt:P17 ?country .
+      FILTER NOT EXISTS { ?item wdt:P171 ?taxonParent }
     } LIMIT 150`;
     for (let tryNo = 0; tryNo < 5; tryNo++) {
       try {

@@ -19,7 +19,7 @@ Each game is five rounds. You get a real photo taken somewhere on Earth, drop a 
 ## How it works
 
 - **Photos** come from [Wikimedia Commons](https://commons.wikimedia.org). Each round picks a seed point in the chosen region (`js/seeds.js`), nudges it up to 25 km, and asks the [Wikidata Query Service](https://query.wikidata.org) for places with a photo nearby (about half a second). Size, author and license come from the Commons API. Maps, flags, scans, aerial shots and small or oddly shaped images are filtered out. The next round loads while you play the current one. If Wikidata can't be reached, the game uses ~110 built-in photos from `data/fallback.json`.
-- **Map** is [Leaflet](https://leafletjs.com) with OpenStreetMap data and CARTO Voyager tiles.
+- **Map** is [Leaflet](https://leafletjs.com) with OpenStreetMap tiles.
 - **Score** is `5000 × e^(−distance / scale)`, where the scale depends on the region size (1,492 km for the world, 150 km for Portugal).
 
 ## Run locally
@@ -50,6 +50,6 @@ tools/harvest.js   collects photos in bulk from Wikidata (to rebuild the fallbac
 
 ## Credits
 
-Photos belong to their Wikimedia Commons authors; the author and license are shown with each photo, with a link to the original file. Map data © OpenStreetMap contributors, tiles © CARTO.
+Photos belong to their Wikimedia Commons authors; the author and license are shown with each photo, with a link to the original file. Map data and tiles © OpenStreetMap contributors.
 
 Code released under the MIT License.

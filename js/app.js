@@ -3,8 +3,8 @@ import { REGIONS } from './seeds.js';
 const ROUNDS = 5;
 const MAX_POINTS = 5000;
 
-const TILE_URL = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
+const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const TILE_ATTR = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 const $ = (id) => document.getElementById(id);
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -110,7 +110,8 @@ function rememberSeen(title) {
 async function placesNear([lat, lng], radiusKm) {
   const query = `SELECT ?loc ?image ?lbl WHERE {
     SERVICE wikibase:around { ?item wdt:P625 ?loc . bd:serviceParam wikibase:center "Point(${lng.toFixed(4)} ${lat.toFixed(4)})"^^geo:wktLiteral . bd:serviceParam wikibase:radius "${radiusKm}" . }
-    ?item wdt:P18 ?image .
+    ?item wdt:P18 ?image ; wdt:P17 ?country .          # places belong to a country…
+    FILTER NOT EXISTS { ?item wdt:P171 ?taxonParent }    # …and aren't animal or plant species
     OPTIONAL { ?item rdfs:label ?lbl FILTER(lang(?lbl) = "en") }
   } LIMIT 120`;
   const data = await fetchJSON(`${SPARQL}?format=json&query=${encodeURIComponent(query)}`, 8000);
@@ -224,11 +225,11 @@ function makePin(kind, label = '') {
 
 function initMaps() {
   guessMap = L.map('guessMap', { worldCopyJump: true, zoomControl: true, attributionControl: true, minZoom: 1 });
-  L.tileLayer(TILE_URL, { attribution: TILE_ATTR, subdomains: 'abcd', maxZoom: 19 }).addTo(guessMap);
+  L.tileLayer(TILE_URL, { attribution: TILE_ATTR, maxZoom: 19 }).addTo(guessMap);
   guessMap.on('click', (e) => placeGuess(e.latlng));
 
   resultMap = L.map('resultMap', { worldCopyJump: true, zoomControl: false, minZoom: 1 });
-  L.tileLayer(TILE_URL, { attribution: TILE_ATTR, subdomains: 'abcd', maxZoom: 19 }).addTo(resultMap);
+  L.tileLayer(TILE_URL, { attribution: TILE_ATTR, maxZoom: 19 }).addTo(resultMap);
   L.control.zoom({ position: 'topright' }).addTo(resultMap);
   resultLayer = L.layerGroup().addTo(resultMap);
 }
