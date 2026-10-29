@@ -12,7 +12,9 @@ You're dropped onto a random street somewhere on Earth. Look around in 360°, wa
 - **Movement options** like GeoGuessr: Move, No moving, or No moving, panning or zooming
 - **Daily challenge**: the same five places for everyone each day, with a shareable 🟩🟨🟧 result
 - **Challenge a friend**: copies a link that replays your exact five rounds and shows your score to beat
+- **Country streak**: click the country you think you're in; how many in a row can you get?
 - **Photos mode**: real photos of places from Wikimedia Commons
+- **Installable**: add it to your phone's home screen or install it on your PC as an app
 - Regions: World, Europe, Americas, Asia, Africa, Oceania and Portugal (including Madeira and the Azores)
 - Optional time limit, personal bests per setting, works on phone and desktop. No account, no build step.
 
@@ -21,7 +23,7 @@ You're dropped onto a random street somewhere on Earth. Look around in 360°, wa
 - **Street view.** Mapillary: each round reads Mapillary's coverage tile (about 20 km) around a random point near a seed city in `js/seeds.js`, picks a 360° sequence and starts in the middle of it. Panoramax: `data/coverage.json` lists ~1,800 spots with 360° coverage, taken from Panoramax's coverage grid; each round searches one of them. A quarter of rounds use Panoramax, and it's the backup if Mapillary fails. Panoramas are shown with [Photo Sphere Viewer](https://photo-sphere-viewer.js.org).
 - **Daily challenge** uses a random generator seeded with the date over the Panoramax coverage, so everyone gets the same places without a server.
 - **Challenge links** pack the five round IDs and settings into the URL (`#c=…`).
-- **Place names** on the result screen come from OpenStreetMap's Nominatim, looked up only after you guess.
+- **Place names** on the result screen, and the country checks in Country streak, come from OpenStreetMap's Nominatim.
 - **Photos mode** asks the [Wikidata Query Service](https://query.wikidata.org) for photographed places near a seed point, with credits from the Commons API, and falls back to ~110 built-in photos in `data/fallback.json`.
 - **Map** is [Leaflet](https://leafletjs.com) with OpenStreetMap tiles.
 - **Score** is `5000 × e^(−distance / scale)`, where the scale depends on the region size (1,492 km for the world, 150 km for Portugal).
@@ -51,11 +53,12 @@ js/seeds.js        regions (label, map view, score scale, areas) and seed points
 data/coverage.json Panoramax spots with 360° coverage
 data/fallback.json built-in photos used when the photo search is unavailable
 tools/harvest.js   collects photos in bulk from Wikidata (to rebuild the fallback)
+sw.js, manifest.webmanifest, icons/   make the game installable as an app
 ```
 
 ## Ideas for later
 
-- Country streak mode (guess the country, keep the streak going)
+- Daily leaderboard (needs a small free database, e.g. Supabase)
 - Live multiplayer duels (needs a small server, e.g. a free Supabase or Firebase tier)
 
 ## Credits

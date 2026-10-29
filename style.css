@@ -374,3 +374,13 @@ button { font: inherit; }
   .stage-credit { bottom: 8.4rem; }
   .daily h2, .challenge h2, .setup-title { font-size: 1.45rem; }
 }
+
+/* ---------- country streak ---------- */
+.streak-verdict { font-family: var(--display); font-weight: 900; font-size: 2.4rem; line-height: 1; margin: 0 0 .35rem; letter-spacing: .01em; }
+.streak-verdict.ok { color: #1E8E4E; }
+.streak-verdict.bad { color: var(--truth); }
+.streak-detail { margin: 0 0 .5rem; font-size: 1.05rem; }
+.r-km { font-weight: 400; color: var(--ink-soft); font-size: .92rem; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .streak-verdict.ok { color: #4ADE80; } }
+
+.install { text-align: center; padding: 0 1.25rem 1rem; }

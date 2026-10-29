@@ -1,0 +1,16 @@
+{
+  "name": "Onde? — where in the world are you?",
+  "short_name": "Onde?",
+  "description": "A free geography guessing game with 360° street view.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#E3ECEA",
+  "theme_color": "#16243A",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

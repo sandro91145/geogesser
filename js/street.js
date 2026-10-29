@@ -12,7 +12,7 @@
 //   { kind: 'pano', source: 'panoramax'|'mapillary', id, lat, lng, heading, src,
 //     author, license, page, seq?, next?, prev? }
 
-import { MAPILLARY_TOKEN } from './config.js?v=6';
+import { MAPILLARY_TOKEN } from './config.js?v=8';
 
 const PANORAMAX = 'https://api.panoramax.xyz/api';
 const MLY_GRAPH = 'https://graph.mapillary.com';
@@ -64,7 +64,7 @@ const inBoxes = (boxes, [lat, lng]) => !boxes || boxes.some(([s, n, w, e]) => la
 /* ---------------- Panoramax ---------------- */
 let coveragePromise = null;
 function loadCoverage() {
-  coveragePromise ||= getJSON('data/coverage.json?v=6', 10000).then((d) => d.points).catch((e) => { coveragePromise = null; throw e; });
+  coveragePromise ||= getJSON('data/coverage.json?v=8', 10000).then((d) => d.points).catch((e) => { coveragePromise = null; throw e; });
   return coveragePromise;
 }
 

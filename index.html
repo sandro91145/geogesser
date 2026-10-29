@@ -6,13 +6,18 @@
   <title>Onde? — where in the world are you?</title>
   <meta name="description" content="A free geography guessing game. Drop into a random street somewhere on Earth, look around in 360°, and pin where you think you are.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16 2a10 10 0 0 0-10 10c0 7.5 10 18 10 18s10-10.5 10-18A10 10 0 0 0 16 2z' fill='%23F2B705' stroke='%2316243A' stroke-width='2.5'/><circle cx='16' cy='12' r='3.5' fill='%2316243A'/></svg>">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#16243A">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Onde?">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/core@5.15.1/index.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@photo-sphere-viewer/markers-plugin@5.15.1/index.css">
-  <link rel="stylesheet" href="style.css?v=6">
+  <link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
 
@@ -43,6 +48,13 @@
 
       <form id="setup" class="setup">
         <h2 class="setup-title">Custom game</h2>
+        <fieldset>
+          <legend>Game</legend>
+          <div class="chips">
+            <label class="chip"><input type="radio" name="game" value="classic" checked><span>5 rounds, closest wins</span></label>
+            <label class="chip"><input type="radio" name="game" value="streak"><span>Country streak</span></label>
+          </div>
+        </fieldset>
         <fieldset>
           <legend>What you see</legend>
           <div class="chips">
@@ -77,6 +89,9 @@
         </div>
       </form>
     </div>
+    <div class="install" id="installBox" hidden>
+      <button type="button" class="btn btn-outline" id="installBtn">Install Onde? as an app</button>
+    </div>
     <footer class="start-foot">
       Street imagery from <a href="https://panoramax.fr" target="_blank" rel="noopener">Panoramax</a><span id="mlyCredit" hidden> and <a href="https://www.mapillary.com" target="_blank" rel="noopener">Mapillary</a></span> contributors.
       Photos from <a href="https://commons.wikimedia.org" target="_blank" rel="noopener">Wikimedia Commons</a> contributors.
@@ -95,7 +110,7 @@
       </div>
       <div class="hud-stats">
         <div class="hud-stat"><span class="hud-k" id="hudRoundLabel">Round</span><span class="hud-v" id="hudRound">1/5</span></div>
-        <div class="hud-stat"><span class="hud-k">Score</span><span class="hud-v" id="hudScore">0</span></div>
+        <div class="hud-stat" id="hudScoreWrap"><span class="hud-k">Score</span><span class="hud-v" id="hudScore">0</span></div>
         <div class="hud-stat hud-timer" id="hudTimerWrap" hidden><span class="hud-k">Time</span><span class="hud-v" id="hudTimer">2:00</span></div>
       </div>
     </header>
@@ -137,6 +152,6 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-  <script type="module" src="js/app.js?v=6"></script>
+  <script type="module" src="js/app.js?v=8"></script>
 </body>
 </html>

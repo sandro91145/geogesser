@@ -1,5 +1,5 @@
-import { REGIONS } from './seeds.js?v=6';
-import { StreetViewer, findPano, panoFromSpec, panoSpec, panoramaxCandidates, preloadPano, hasMapillary } from './street.js?v=6';
+import { REGIONS } from './seeds.js?v=8';
+import { StreetViewer, findPano, panoFromSpec, panoSpec, panoramaxCandidates, preloadPano, hasMapillary } from './street.js?v=8';
 
 const ROUNDS = 5;
 const MAX_POINTS = 5000;
@@ -12,7 +12,10 @@ const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').match
 
 const state = {
   regionKey: 'world',
+  game: 'classic',       // classic | streak
   mode: 'street',        // street | photo
+  streak: 0,
+  guessCountry: null,    // Promise<{cc,name,flag}|null|undefined> for the current pin (streak)
   move: 'move',          // move | nomove | nmpz
   timerSecs: 0,
   kind: 'custom',        // custom | daily | challenge
@@ -36,7 +39,7 @@ const store = {
   get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } },
 };
-const bestKey = () => `onde.best.${state.mode}.${state.regionKey}.${state.timerSecs}${state.mode === 'street' ? '.' + state.move : ''}`;
+const bestKey = () => `onde.best.${state.game === 'streak' ? 'streak.' : ''}${state.mode}.${state.regionKey}.${state.timerSecs}${state.mode === 'street' ? '.' + state.move : ''}`;
 
 /* ---------------- helpers ---------------- */
 const fmt = (n) => Math.round(n).toLocaleString('en-US');
@@ -257,19 +260,35 @@ async function findLocation(roundNo) {
   return loc;
 }
 
-// Town/region + country for the result card (only fetched after the guess).
-async function placeName(loc) {
-  if (loc.place !== undefined) return loc.place;
-  try {
-    const d = await fetchJSON(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10&accept-language=en&lat=${loc.lat}&lon=${loc.lng}`, 5000);
+const flagOf = (cc) => (/^[A-Z]{2}$/.test(cc) ? String.fromCodePoint(...[...cc].map((c) => 0x1F1A5 + c.charCodeAt(0))) : '');
+const NOMINATIM = 'https://nominatim.openstreetmap.org/reverse?format=jsonv2&accept-language=en';
+
+// Town/region + country for the result card (only fetched after the guess,
+// or in the background during a streak round, where the country is needed).
+function placeName(loc) {
+  loc.placePromise ||= fetchJSON(`${NOMINATIM}&zoom=10&lat=${loc.lat}&lon=${loc.lng}`, 6000).then((d) => {
     const a = d.address || {};
     const local = a.city || a.town || a.village || a.municipality || a.county || a.state_district || a.state || '';
-    const cc = (a.country_code || '').toUpperCase();
-    const flag = /^[A-Z]{2}$/.test(cc) ? String.fromCodePoint(...[...cc].map((c) => 0x1F1A5 + c.charCodeAt(0))) : '';
+    loc.cc = (a.country_code || '').toUpperCase();
+    loc.country = a.country || '';
+    loc.flag = flagOf(loc.cc);
     loc.place = [local, a.country].filter(Boolean).join(', ');
-    loc.flag = flag;
-  } catch { loc.place = ''; }
-  return loc.place;
+    return loc.place;
+  }).catch(() => { loc.placePromise = null; loc.place = ''; return ''; });
+  return loc.placePromise;
+}
+
+// Which country is a map click in? null = sea / no country, undefined = lookup failed.
+const countryCache = new Map();
+function countryAt(lat, lng) {
+  const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
+  if (!countryCache.has(key)) {
+    countryCache.set(key, fetchJSON(`${NOMINATIM}&zoom=3&lat=${lat}&lon=${lng}`, 6000).then((d) => {
+      const cc = (d.address?.country_code || '').toUpperCase();
+      return cc ? { cc, name: d.address.country, flag: flagOf(cc) } : null;
+    }).catch(() => { countryCache.delete(key); return undefined; }));
+  }
+  return countryCache.get(key);
 }
 
 /* ---------------- maps ---------------- */
@@ -298,6 +317,7 @@ function initMaps() {
 function resetGuessMap() {
   if (guessMarker) { guessMarker.remove(); guessMarker = null; }
   state.guess = null;
+  state.guessCountry = null;
   guessMap.invalidateSize();
   guessMap.fitBounds(REGIONS[state.regionKey].view, { animate: false });
   updateGuessButton();
@@ -309,13 +329,31 @@ function placeGuess(latlng) {
   if (!guessMarker) guessMarker = L.marker(latlng, { icon: makePin('guess'), keyboard: false }).addTo(guessMap);
   else guessMarker.setLatLng(latlng);
   $('guessPanel').classList.add('pinned');
-  updateGuessButton();
+  if (state.game === 'streak') {
+    // Wait until the player stops clicking around before asking which country it is.
+    const w = latlng.wrap();
+    clearTimeout(placeGuess.timer);
+    const p = (state.guessCountry = new Promise((res) => { placeGuess.timer = setTimeout(() => countryAt(w.lat, w.lng).then(res), 400); }));
+    updateGuessButton();
+    p.then(() => { if (state.guessCountry === p) updateGuessButton(); });
+  } else updateGuessButton();
 }
 
-function updateGuessButton() {
+async function updateGuessButton() {
   const btn = $('guessBtn');
-  btn.disabled = !state.guess;
-  btn.textContent = state.guess ? 'Guess' : 'Place a pin on the map';
+  if (state.game !== 'streak' || !state.guess) {
+    btn.disabled = !state.guess;
+    btn.textContent = state.guess ? 'Guess' : state.game === 'streak' ? 'Click the country you think it is' : 'Place a pin on the map';
+    return;
+  }
+  const p = state.guessCountry;
+  btn.disabled = true;
+  btn.textContent = 'Checking…';
+  const c = await p;
+  if (state.guessCountry !== p) return;
+  if (c) { btn.disabled = false; btn.textContent = `Guess ${c.flag} ${c.name}`; }
+  else if (c === null) btn.textContent = "That's not a country. Click on land";
+  else { btn.disabled = false; btn.textContent = 'Guess'; }
 }
 
 function nearCopy(from, to) {
@@ -356,6 +394,7 @@ function renderRegions() {
 
 function readForm() {
   const form = $('setup');
+  state.game = form.game.value;
   state.mode = form.mode.value;
   state.regionKey = form.region.value;
   state.move = form.move.value;
@@ -367,7 +406,9 @@ function renderSetup() {
   $('moveField').hidden = state.mode !== 'street';
   const best = store.get(bestKey());
   const where = REGIONS[state.regionKey].label;
-  $('bestLine').innerHTML = best ? `Your best with these settings: <strong>${fmt(best)}</strong>` : `No score yet for ${where} with these settings.`;
+  $('bestLine').innerHTML = state.game === 'streak'
+    ? (best ? `Your best streak with these settings: <strong>${best}</strong>` : `No streak yet for ${where} with these settings.`)
+    : (best ? `Your best with these settings: <strong>${fmt(best)}</strong>` : `No score yet for ${where} with these settings.`);
 }
 
 function renderDaily() {
@@ -413,14 +454,16 @@ function beginGame() {
   state.gameId++;
   state.round = 0;
   state.total = 0;
+  state.streak = 0;
   state.results = [];
   state.usedTitles.clear();
   state.prefetch = null;
   $('start').hidden = true;
+  $('hudScoreWrap').hidden = state.game === 'streak';
   $('game').hidden = false;
   $('hudTimerWrap').hidden = !state.timerSecs;
   $('hudScore').textContent = '0';
-  $('hudRoundLabel').textContent = state.kind === 'daily' ? 'Daily' : state.kind === 'challenge' ? 'Challenge' : 'Round';
+  $('hudRoundLabel').textContent = state.game === 'streak' ? 'Streak' : state.kind === 'daily' ? 'Daily' : state.kind === 'challenge' ? 'Challenge' : 'Round';
   if (!guessMap) initMaps();
   nextRound();
 }
@@ -429,6 +472,7 @@ function startCustom() { readForm(); state.kind = 'custom'; beginGame(); }
 
 function startDaily() {
   state.kind = 'daily';
+  state.game = 'classic';
   state.dailyDate = todayUTC();
   state.mode = 'street';
   state.regionKey = 'world';
@@ -440,6 +484,7 @@ function startDaily() {
 function startChallenge() {
   const c = state.challenge;
   state.kind = 'challenge';
+  state.game = 'classic';
   state.mode = c.m;
   state.regionKey = REGIONS[c.r] ? c.r : 'world';
   state.move = c.mv || 'move';
@@ -451,7 +496,7 @@ async function nextRound() {
   state.round += 1;
   state.phase = 'loading';
   state.current = null;
-  $('hudRound').textContent = `${state.round}/${ROUNDS}`;
+  $('hudRound').textContent = state.game === 'streak' ? String(state.streak) : `${state.round}/${ROUNDS}`;
   $('result').hidden = true;
   $('guessPanel').classList.remove('pinned', 'open');
   $('stageImg').classList.remove('zoomed');
@@ -470,7 +515,8 @@ async function nextRound() {
     hideLoading();
     state.phase = 'guessing';
     startTimer();
-    if (roundNo < ROUNDS) state.prefetch = findLocation(roundNo + 1).catch(() => null);
+    if (state.game === 'streak') placeName(loc);   // know the country before the guess
+    if (state.game === 'streak' || roundNo < ROUNDS) state.prefetch = findLocation(roundNo + 1).catch(() => null);
   } catch (err) {
     if (gameId !== state.gameId) return;
     console.error(err);
@@ -534,6 +580,7 @@ function stopTimer() { clearInterval(state.timerId); state.timerId = null; }
 /* ---------------- guessing + result ---------------- */
 function submitGuess(timedOut = false) {
   if (state.phase !== 'guessing') return;
+  if (state.game === 'streak') return submitStreakGuess(timedOut);
   stopTimer();
   state.phase = 'result';
   const loc = state.current;
@@ -698,6 +745,97 @@ function showSummary() {
   ($('againBtn') || $('linkBtn')).focus({ preventScroll: true });
 }
 
+/* ---------------- country streak ---------------- */
+async function submitStreakGuess(timedOut) {
+  const loc = state.current;
+  let guessed = null;
+  if (state.guess) {
+    const w = state.guess.wrap();
+    guessed = await (state.guessCountry || countryAt(w.lat, w.lng));
+    if (!timedOut && !guessed) { updateGuessButton(); return; }  // sea, or the lookup failed: let them try again
+  }
+  if (state.phase !== 'guessing') return;
+  stopTimer();
+  state.phase = 'result';
+  $('guessBtn').disabled = true;
+  await placeName(loc);
+  const truth = loc.cc ? { cc: loc.cc, name: loc.country, flag: loc.flag } : null;
+  const correct = !!(guessed && truth && guessed.cc === truth.cc);
+  const unknown = !truth;            // couldn't tell which country it was: doesn't count
+  if (correct) state.streak++;
+  const truthLL = L.latLng(loc.lat, loc.lng);
+  const guessLL = state.guess ? state.guess.wrap() : null;
+  const km = guessLL ? haversine(guessLL, truthLL) : null;
+  state.results.push({ loc, guess: guessLL, km, points: 0, correct, guessed, truth });
+  $('hudRound').textContent = String(state.streak);
+  $('guessPanel').classList.remove('open');
+  showStreakResult({ loc, guessLL, km, correct, unknown, guessed, truth, timedOut });
+}
+
+function showStreakResult({ loc, guessLL, km, correct, unknown, guessed, truth, timedOut }) {
+  $('result').hidden = false;
+  resultMap.invalidateSize();
+  resultLayer.clearLayers();
+  const over = !correct && !unknown;
+  const verdict = unknown ? "Couldn't check this one" : correct ? 'Correct' : timedOut && !guessed ? 'Out of time' : 'Wrong country';
+  const detail = unknown
+    ? "We couldn't tell which country this was, so it doesn't count either way."
+    : correct ? `It was ${truth.flag} ${escapeHTML(truth.name)}. Streak: ${state.streak}.`
+      : `It was ${truth.flag} ${escapeHTML(truth.name)}${guessed ? `, not ${guessed.flag} ${escapeHTML(guessed.name)}` : ''}.`;
+  $('resultCard').innerHTML = `
+    <p class="streak-verdict ${correct ? 'ok' : unknown ? '' : 'bad'}">${verdict}</p>
+    <p class="streak-detail">${detail}</p>
+    <p class="r-where">${loc.place ? escapeHTML(loc.place) : ''}${km != null ? ` <span class="r-km">· your pin was ${fmtKm(km)} away</span>` : ''}</p>
+    <p class="r-credit">Imagery by ${escapeHTML(loc.author)}${loc.license ? `, ${escapeHTML(loc.license)}` : ''}. <a href="${loc.page}" target="_blank" rel="noopener">View on ${sourceName(loc)}</a></p>
+    <div class="r-actions">
+      <button class="btn btn-primary" id="nextBtn">${over ? 'See results' : 'Next country'}</button>
+    </div>`;
+  L.marker(L.latLng(loc.lat, loc.lng), { icon: makePin('truth'), keyboard: false }).addTo(resultLayer);
+  if (guessLL) {
+    const near = nearCopy(L.latLng(loc.lat, loc.lng), guessLL);
+    L.marker(near, { icon: makePin('guess'), keyboard: false }).addTo(resultLayer);
+    resultMap.fitBounds(L.latLngBounds([L.latLng(loc.lat, loc.lng), near]), { padding: [60, 60], paddingBottomRight: [60, cardPadding()], maxZoom: 7, animate: false });
+    animateLine(near, L.latLng(loc.lat, loc.lng));
+  } else resultMap.setView([loc.lat, loc.lng], 5, { animate: false });
+  $('nextBtn').addEventListener('click', () => (over ? showStreakSummary() : nextRound()));
+  $('nextBtn').focus({ preventScroll: true });
+}
+
+function showStreakSummary() {
+  state.phase = 'summary';
+  const key = bestKey();
+  const prevBest = store.get(key) || 0;
+  const isBest = state.streak > prevBest;
+  if (isBest) store.set(key, state.streak);
+  resultLayer.clearLayers();
+  resultMap.invalidateSize();
+  const bounds = [];
+  state.results.forEach((r, i) => {
+    const ll = L.latLng(r.loc.lat, r.loc.lng);
+    L.marker(ll, { icon: makePin(r.correct ? 'truth' : 'guess', i + 1), keyboard: false }).addTo(resultLayer);
+    bounds.push(ll);
+  });
+  const flags = state.results.filter((r) => r.correct).map((r) => r.truth.flag).join('');
+  const last = state.results[state.results.length - 1];
+  const sub = `${REGIONS[state.regionKey].label}. ${isBest ? (prevBest ? 'New best streak.' : 'Your first streak with these settings.') : `Your best is ${prevBest}.`}`;
+  const rows = state.results.map((r) => `<li><span class="s-name">${r.truth ? `${r.truth.flag} ${escapeHTML(r.truth.name)}` : 'Unknown'}</span>
+      <span class="s-pts">${r.correct ? '✓' : r.truth ? '✗' : '–'}<span class="s-km">${r.guessed ? `${r.guessed.flag} ${escapeHTML(r.guessed.name)}` : 'no guess'}</span></span></li>`).join('');
+  $('resultCard').innerHTML = `
+    <p class="sum-total">${state.streak} <span>${state.streak === 1 ? 'country' : 'countries'} in a row</span></p>
+    <p class="sum-sub">${escapeHTML(sub)}${last?.truth ? ` The last one was ${last.truth.flag} ${escapeHTML(last.truth.name)}.` : ''}</p>
+    <ol class="sum-list">${rows}</ol>
+    <div class="r-actions">
+      <button class="btn btn-outline" id="copyBtn">Copy result</button>
+      <button class="btn btn-outline" id="menuBtn">Menu</button>
+      <button class="btn btn-primary" id="againBtn">Play again</button>
+    </div>`;
+  if (bounds.length) resultMap.fitBounds(L.latLngBounds(bounds), { padding: [50, 50], paddingBottomRight: [50, cardPadding()], maxZoom: 6, animate: false });
+  $('againBtn').addEventListener('click', startCustom);
+  $('menuBtn').addEventListener('click', showStart);
+  $('copyBtn').addEventListener('click', (e) => copyText(`Onde? Country streak (${REGIONS[state.regionKey].label}): ${state.streak} 🔥\n${flags}\n${baseUrl()}`, e.currentTarget, 'Copy result'));
+  $('againBtn').focus({ preventScroll: true });
+}
+
 function copyText(text, btn, label, done = 'Copied') {
   navigator.clipboard?.writeText(text).then(
     () => { btn.textContent = done; setTimeout(() => (btn.textContent = label), 1800); },
@@ -764,6 +902,19 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') { e.preventDefault(); viewer.stepForward(); }
     if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') { e.preventDefault(); viewer.stepForward(true); }
   }
+});
+
+// Installable app: offline shell + an install button where the browser supports it.
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; $('installBox').hidden = false; });
+window.addEventListener('appinstalled', () => { $('installBox').hidden = true; });
+$('installBtn').addEventListener('click', async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  await installPrompt.userChoice.catch(() => {});
+  installPrompt = null;
+  $('installBox').hidden = true;
 });
 
 showStart();
