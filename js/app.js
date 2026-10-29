@@ -1,4 +1,4 @@
-import { REGIONS } from './seeds.js';
+import { REGIONS } from './seeds.js?v=4';
 
 const ROUNDS = 5;
 const MAX_POINTS = 5000;
